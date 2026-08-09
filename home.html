@@ -2,193 +2,291 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>كامورو</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>الرئيسية - كامورو</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,Cantarell,sans-serif;-webkit-tap-highlight-color:transparent;}
-body{background:#0f1c2e;color:#fff;min-height:100vh;}
-#app{max-width:430px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;background:#0f1c2e;}
+body{background:#000;color:white;height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden;}
+.container{display:flex;width:100%;max-width:414px;height:100vh;flex-direction:column;position:relative;background:#000;}
 
 /* ===== الهيدر ===== */
-header{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:rgba(15,28,46,.92);backdrop-filter:blur(8px);border-bottom:1px solid #22354f;}
-.brand{font-size:22px;font-weight:800;background:linear-gradient(45deg,#ffe082,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-header .actions{display:flex;gap:10px;}
-.icon-btn{background:none;border:none;color:#c7d0dc;font-size:20px;cursor:pointer;padding:6px;border-radius:10px;}
-.icon-btn:hover{background:#16263d;}
+.header{display:flex;justify-content:space-between;align-items:center;padding:calc(4px + env(safe-area-inset-top,6px)) 16px 4px 16px;border-bottom:1px solid #121212;flex-shrink:0;background:#000;z-index:10;transition:transform .25s ease,opacity .2s ease;height:calc(40px + env(safe-area-inset-top,6px));}
+.header-title{font-size:19px;font-weight:700;background:linear-gradient(45deg,#ffe082,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.header-icons{display:flex;gap:14px;align-items:center;position:relative;}
+.header-icons svg{width:22px;height:22px;cursor:pointer;}
+.badge{position:absolute;top:-6px;left:-8px;background:#ff3040;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid #000;}
+.header.hide{transform:translateY(-100%);opacity:0;position:absolute;width:100%;top:0;}
 
-main{flex:1;padding-bottom:80px;}
-.view{display:block;}
-.muted{color:#8e9aa8;}
-.center{text-align:center;}
-.loading-txt{padding:40px 20px;text-align:center;color:#8e9aa8;}
+/* ===== التمرير ===== */
+.main-scrollable-content{flex-grow:1;overflow-y:auto;width:100%;height:100%;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.main-scrollable-content::-webkit-scrollbar{display:none;}
+.view{display:none;}
+.view.active{display:block;}
+.loading-txt{padding:50px 20px;text-align:center;color:#8e9aa8;font-size:14px;}
 
 /* ===== الستوري ===== */
-.stories{display:flex;gap:14px;overflow-x:auto;padding:14px 16px;scrollbar-width:none;}
-.stories::-webkit-scrollbar{display:none;}
-.story{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;background:none;border:none;color:#fff;cursor:pointer;padding:0;}
-.story .ring{width:64px;height:64px;border-radius:50%;padding:2.5px;background:linear-gradient(45deg,#ffe082,#ffb300,#b78103);}
-.story span{font-size:11px;color:#c7d0dc;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.avatar-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ffb300,#b78103);color:#0f1c2e;font-weight:800;border-radius:50%;overflow:hidden;flex-shrink:0;}
-.avatar-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.stories-container{display:flex;gap:14px;padding:12px 16px;overflow-x:auto;border-bottom:1px solid #121212;flex-shrink:0;scrollbar-width:none;}
+.stories-container::-webkit-scrollbar{display:none;}
+.story-item{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:72px;cursor:pointer;background:none;border:none;color:#fff;padding:0;}
+.avatar-ring{width:72px;height:72px;border-radius:50%;padding:2.5px;background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);position:relative;}
+.my-story .avatar-ring{background:#222;}
+.plus-icon{position:absolute;bottom:2px;left:2px;width:20px;height:20px;background:#ffb300;color:#000;border-radius:50%;display:flex;justify-content:center;align-items:center;font-size:14px;font-weight:bold;border:2px solid #000;}
+.avatar-inner{width:100%;height:100%;border-radius:50%;background:#121212;border:2px solid #000;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;color:#ffb300;font-weight:800;}
+.avatar-inner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.story-name{font-size:11px;color:#8e9aa8;max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;}
 
-/* ===== بطاقة المنشور ===== */
-.post{background:#13233a;border:1px solid #22354f;border-radius:16px;margin:0 12px 16px;overflow:hidden;}
-.post-head{display:flex;align-items:center;gap:10px;padding:12px 14px;}
-.post-head b{font-size:14px;cursor:pointer;}
-.post-head small{display:block;color:#8e9aa8;font-size:11px;margin-top:2px;}
-.post-user{flex:1;}
-.del-btn{background:none;border:none;color:#8e9aa8;font-size:16px;cursor:pointer;}
-.post-media{width:100%;max-height:540px;object-fit:cover;background:#0f1c2e;display:block;cursor:pointer;}
-video.post-media{max-height:540px;object-fit:contain;background:#000;}
-.post-actions{display:flex;align-items:center;gap:16px;padding:10px 14px 4px;}
+/* ===== المنشور ===== */
+.post{width:100%;padding-bottom:16px;border-bottom:1px solid #121212;}
+.post-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;}
+.user-info{display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;}
+.user-details h4{font-size:14px;font-weight:600;}
+.user-details p{font-size:11px;color:#738499;margin-top:2px;}
+.mini-avatar{width:36px;height:36px;border-radius:50%;overflow:hidden;background:#ffb300;flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:15px;}
+.mini-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.follow-btn{background:#ffb300;color:#000;border:none;padding:6px 14px;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;}
+.follow-btn.following{background:#1a1a1a;color:#8e9aa8;}
+.post-media{width:100%;max-height:540px;object-fit:cover;background:#121212;display:block;cursor:pointer;}
+video.post-media{object-fit:contain;background:#000;max-height:540px;}
+.post-actions{display:flex;align-items:center;gap:16px;padding:10px 16px 4px;}
 .action-btn{background:none;border:none;cursor:pointer;font-size:22px;color:#fff;}
 .like-btn{background:none;border:none;cursor:pointer;font-size:22px;color:#fff;transition:transform .15s;}
-.like-btn:active{transform:scale(1.25);}
-.like-btn.liked{color:#ff5252;}
-.post-caption{padding:8px 14px 6px;font-size:14px;line-height:1.7;word-break:break-word;}
+.like-btn:active{transform:scale(1.3);}
+.like-btn.liked{color:#ff3040;}
+.post-caption{padding:4px 16px;font-size:13px;line-height:1.7;word-break:break-word;}
 .post-caption b{cursor:pointer;margin-left:6px;}
-.like-count{font-size:13px;color:#c7d0dc;margin-top:6px;font-weight:600;}
-.post-comments{padding:2px 14px 8px;}
+.like-count{font-size:12px;color:#c7d0dc;margin-top:5px;font-weight:600;}
+.comments-area{padding:2px 16px 6px;}
 .show-comments{background:none;border:none;color:#8e9aa8;font-size:12px;cursor:pointer;}
-.comment-row{font-size:13px;margin-bottom:6px;line-height:1.6;color:#d6dde6;}
+.comment-row{font-size:13px;margin:6px 0;line-height:1.6;color:#d6dde6;word-break:break-word;}
 .comment-row b{cursor:pointer;margin-left:6px;color:#fff;}
-.add-comment{display:flex;gap:8px;padding:8px 14px 14px;border-top:1px solid #1c2f4a;margin-top:4px;}
-.add-comment input{flex:1;height:38px;background:#0f1c2e;border:1px solid #22354f;border-radius:19px;padding:0 14px;color:#fff;font-size:13px;outline:none;}
+.add-comment{display:flex;gap:8px;padding:8px 16px 12px;align-items:center;}
+.add-comment input{flex:1;height:36px;background:#121212;border:1px solid #262626;border-radius:18px;padding:0 14px;color:#fff;font-size:13px;outline:none;}
 .add-comment input:focus{border-color:#ffb300;}
-.add-comment button{background:linear-gradient(90deg,#ffb300,#b78103);border:none;color:#0f1c2e;font-weight:700;border-radius:19px;padding:0 16px;font-size:13px;cursor:pointer;}
+.add-comment button{background:none;border:none;color:#ffb300;font-weight:700;font-size:13px;cursor:pointer;padding:6px;}
+.empty-box{padding:60px 24px;text-align:center;color:#8e9aa8;font-size:14px;line-height:2;}
+.empty-box button{margin-top:14px;background:linear-gradient(90deg,#ffb300,#b78103);border:none;color:#000;font-weight:700;padding:11px 26px;border-radius:22px;font-size:13px;cursor:pointer;}
 
-/* ===== فارغ ===== */
-.empty{padding:50px 24px;text-align:center;color:#8e9aa8;}
-.empty button{margin-top:16px;background:linear-gradient(90deg,#ffb300,#b78103);border:none;color:#0f1c2e;font-weight:700;padding:12px 26px;border-radius:24px;font-size:14px;cursor:pointer;}
-
-/* ===== الشريط السفلي ===== */
-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;display:flex;justify-content:space-around;align-items:center;padding:8px 6px calc(8px + env(safe-area-inset-bottom));background:rgba(15,28,46,.95);backdrop-filter:blur(8px);border-top:1px solid #22354f;z-index:60;}
-nav button{background:none;border:none;color:#8e9aa8;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:6px 10px;border-radius:12px;}
-nav button.active{color:#ffb300;}
-nav button span{font-size:21px;line-height:1;}
-nav .add-tab{width:44px;height:44px;border-radius:50%;background:linear-gradient(90deg,#ffb300,#b78103);color:#0f1c2e;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;margin-top:-18px;box-shadow:0 4px 14px rgba(255,179,0,.35);}
+/* ===== الريلز ===== */
+.reels-container{height:100%;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;}
+.reels-container::-webkit-scrollbar{display:none;}
+.reel{height:100%;scroll-snap-align:start;position:relative;display:flex;align-items:center;justify-content:center;background:#000;}
+.reel video{width:100%;height:100%;object-fit:contain;}
+.reel-side{position:absolute;bottom:90px;left:10px;display:flex;flex-direction:column;gap:18px;align-items:center;}
+.reel-side button{background:none;border:none;color:#fff;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;cursor:pointer;}
+.reel-side span{font-size:22px;}
+.reel-info{position:absolute;bottom:90px;right:16px;left:70px;font-size:13px;line-height:1.7;}
+.reel-info b{font-size:14px;}
+.reel-caption{position:absolute;bottom:14px;right:16px;left:16px;font-size:12px;color:#ddd;text-shadow:0 1px 3px rgba(0,0,0,.8);}
 
 /* ===== البحث ===== */
 .search-box{padding:14px 16px 6px;}
-.search-box input{width:100%;height:46px;background:#13233a;border:1px solid #22354f;border-radius:14px;padding:0 16px;color:#fff;font-size:14px;outline:none;}
+.search-box input{width:100%;height:44px;background:#121212;border:1px solid #262626;border-radius:12px;padding:0 16px;color:#fff;font-size:14px;outline:none;}
 .search-box input:focus{border-color:#ffb300;}
-.user-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #1c2f4a;}
+.user-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #121212;}
 .u-info{flex:1;cursor:pointer;}
 .u-info b{font-size:14px;}
 .u-info small{display:block;color:#8e9aa8;font-size:12px;margin-top:2px;}
-.follow-btn{background:none;border:1px solid #ffb300;color:#ffb300;font-weight:600;font-size:12px;padding:7px 16px;border-radius:18px;cursor:pointer;}
-.follow-btn.following{background:#1c2f4a;border-color:#1c2f4a;color:#8e9aa8;}
-.follow-btn.big{padding:10px 30px;font-size:13px;border-radius:22px;}
-.edit-btn{background:none;border:1px solid #22354f;color:#c7d0dc;font-weight:600;font-size:12px;padding:10px 30px;border-radius:22px;cursor:pointer;}
+.priv-tag{color:#ffb300;font-size:10px;border:1px solid #ffb300;border-radius:6px;padding:1px 5px;margin-left:6px;}
 
 /* ===== الملف الشخصي ===== */
 .profile-head{display:flex;align-items:center;gap:20px;padding:20px 16px 10px;}
+.big-avatar{width:80px;height:80px;border-radius:50%;overflow:hidden;background:#121212;position:relative;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#ffb300;border:2px solid #333;}
+.big-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
 .p-stats{display:flex;flex:1;justify-content:space-around;text-align:center;}
-.p-stats b{display:block;font-size:17px;}
-.p-stats span{font-size:12px;color:#8e9aa8;}
-.p-name{padding:4px 16px;font-size:15px;}
-.p-bio{padding:2px 16px 10px;color:#c7d0dc;font-size:13px;line-height:1.7;}
-.p-actions{padding:0 16px 16px;}
+.p-stats b{display:block;font-size:16px;}
+.p-stats span{font-size:11px;color:#8e9aa8;}
+.p-name{padding:4px 16px;font-size:15px;font-weight:700;}
+.p-bio{padding:2px 16px 8px;color:#c7d0dc;font-size:13px;line-height:1.7;white-space:pre-wrap;}
+.p-actions{padding:8px 16px 12px;display:flex;gap:8px;}
+.p-actions button{flex:1;height:38px;border-radius:10px;border:1px solid #262626;background:#121212;color:#fff;font-size:13px;font-weight:600;cursor:pointer;}
+.p-actions button.primary{background:#ffb300;color:#000;border-color:#ffb300;}
+.p-actions button.following{background:#1a1a1a;color:#8e9aa8;}
 .p-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:6px 0 20px;}
-.p-grid .cell{position:relative;width:100%;aspect-ratio:1/1;cursor:pointer;overflow:hidden;background:#13233a;}
+.p-grid .cell{position:relative;width:100%;aspect-ratio:1/1;cursor:pointer;overflow:hidden;background:#121212;}
 .p-grid img,.p-grid video{width:100%;height:100%;object-fit:cover;display:block;}
-.video-badge{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:3px 8px;border-radius:10px;}
+.video-badge{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:2px 7px;border-radius:8px;}
+.private-lock{padding:50px 24px;text-align:center;color:#8e9aa8;font-size:14px;line-height:2;}
 
-/* ===== المودال العام ===== */
-.modal{position:fixed;inset:0;background:rgba(5,12,22,.85);display:flex;align-items:flex-end;justify-content:center;z-index:100;backdrop-filter:blur(4px);}
-.modal-box{width:100%;max-width:430px;background:#13233a;border-radius:24px 24px 0 0;padding:22px 18px calc(22px + env(safe-area-inset-bottom));animation:slideUp .25s ease;max-height:85vh;overflow-y:auto;}
+/* ===== الإشعارات ===== */
+.notif-row{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #121212;}
+.notif-row.unread{background:#0d0d0d;}
+.notif-text{flex:1;font-size:13px;line-height:1.6;}
+.notif-text b{cursor:pointer;}
+.notif-text .time{display:block;color:#8e9aa8;font-size:11px;margin-top:3px;}
+.notif-ic{font-size:20px;flex-shrink:0;}
+
+/* ===== الرسائل ===== */
+.msg-top{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #121212;background:#000;position:sticky;top:0;z-index:5;}
+.msg-top button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px;}
+.msg-top b{font-size:15px;}
+.conv-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #121212;cursor:pointer;}
+.conv-row:hover{background:#0a0a0a;}
+.conv-info{flex:1;min-width:0;}
+.conv-info b{font-size:14px;}
+.conv-info p{font-size:12px;color:#8e9aa8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.conv-unread{background:#ff3040;color:#fff;font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 5px;}
+.chat-box{display:flex;flex-direction:column;height:calc(100vh - 120px);}
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;scrollbar-width:none;}
+.chat-messages::-webkit-scrollbar{display:none;}
+.msg-bubble{max-width:75%;padding:9px 13px;border-radius:18px;font-size:13px;line-height:1.6;word-break:break-word;}
+.msg-mine{align-self:flex-start;background:linear-gradient(135deg,#ffb300,#b78103);color:#000;border-bottom-left-radius:4px;}
+.msg-other{align-self:flex-end;background:#262626;color:#fff;border-bottom-right-radius:4px;}
+.msg-bubble img,.msg-bubble video{max-width:200px;border-radius:12px;display:block;margin-top:4px;max-height:240px;}
+.msg-time{font-size:10px;opacity:.6;margin-top:3px;display:block;}
+.chat-input{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #121212;align-items:center;background:#000;}
+.chat-input input{flex:1;height:40px;background:#121212;border:1px solid #262626;border-radius:20px;padding:0 16px;color:#fff;font-size:13px;outline:none;}
+.chat-input button{background:none;border:none;color:#ffb300;font-size:22px;cursor:pointer;padding:6px;}
+.chat-empty{padding:60px 30px;text-align:center;color:#8e9aa8;font-size:13px;line-height:2;}
+
+/* ===== مودال ===== */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;z-index:100;backdrop-filter:blur(4px);}
+.modal-box{width:100%;max-width:414px;background:#111;border-radius:24px 24px 0 0;padding:22px 18px calc(22px + env(safe-area-inset-bottom));animation:slideUp .25s ease;max-height:85vh;overflow-y:auto;}
 @keyframes slideUp{from{transform:translateY(40px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 .modal-box h3{margin-bottom:16px;font-size:17px;}
-.file-label{display:flex;align-items:center;justify-content:center;min-height:140px;border:2px dashed #22354f;border-radius:16px;cursor:pointer;margin-bottom:12px;color:#8e9aa8;overflow:hidden;background:#0f1c2e;text-align:center;}
-.file-label img,.file-label video{width:100%;max-height:260px;object-fit:contain;}
-.modal-box textarea{width:100%;min-height:80px;background:#0f1c2e;border:1px solid #22354f;border-radius:14px;padding:12px;color:#fff;font-size:14px;resize:vertical;outline:none;font-family:inherit;}
+.file-label{display:flex;align-items:center;justify-content:center;min-height:130px;border:2px dashed #333;border-radius:16px;cursor:pointer;margin-bottom:12px;color:#8e9aa8;overflow:hidden;background:#0a0a0a;text-align:center;font-size:13px;}
+.file-label img,.file-label video{width:100%;max-height:240px;object-fit:contain;}
+.modal-box textarea{width:100%;min-height:76px;background:#0a0a0a;border:1px solid #262626;border-radius:12px;padding:12px;color:#fff;font-size:14px;resize:vertical;outline:none;font-family:inherit;}
 .modal-box textarea:focus{border-color:#ffb300;}
-.publish{width:100%;height:48px;border:none;border-radius:24px;background:linear-gradient(90deg,#ffb300,#b78103);color:#0f1c2e;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;}
+.publish{width:100%;height:46px;border:none;border-radius:23px;background:linear-gradient(90deg,#ffb300,#b78103);color:#000;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;}
 .publish:disabled{opacity:.6;}
-.cancel{width:100%;height:44px;border:none;border-radius:22px;background:#1c2f4a;color:#c7d0dc;font-size:14px;cursor:pointer;margin-top:8px;}
+.cancel{width:100%;height:42px;border:none;border-radius:21px;background:#1c1c1c;color:#c7d0dc;font-size:13px;cursor:pointer;margin-top:8px;}
+.switch-row{display:flex;align-items:center;justify-content:space-between;padding:14px 2px;border-bottom:1px solid #121212;font-size:14px;}
+.switch{width:48px;height:28px;border-radius:14px;background:#333;position:relative;cursor:pointer;transition:.2s;border:none;}
+.switch::after{content:'';position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;}
+.switch.on{background:linear-gradient(90deg,#ffb300,#b78103);}
+.switch.on::after{transform:translateX(-20px);}
 
 /* ===== عارض القصص ===== */
-.story-viewer{width:100%;max-width:430px;height:100%;background:#000;position:relative;display:flex;align-items:center;justify-content:center;}
+.story-viewer{width:100%;max-width:414px;height:100%;background:#000;position:relative;display:flex;align-items:center;justify-content:center;}
 .sv-head{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;padding:14px;z-index:10;background:linear-gradient(rgba(0,0,0,.6),transparent);}
 .sv-head b{font-size:14px;}
 .sv-head small{display:block;color:#c7d0dc;font-size:11px;}
-.sv-close{margin-left:auto;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;}
+.sv-close{margin-left:auto;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;}
 .sv-progress{position:absolute;top:0;left:0;right:0;height:3px;background:rgba(255,255,255,.2);z-index:11;}
 .sv-progress::after{content:'';display:block;height:100%;background:linear-gradient(90deg,#ffe082,#ffb300);animation:progress 5s linear forwards;}
 @keyframes progress{from{width:0;}to{width:100%;}}
-.sv-media{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+.sv-media{width:100%;height:100%;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 .sv-media img,.sv-media video{max-width:100%;max-height:100%;object-fit:contain;}
+
+/* ===== الشريط السفلي ===== */
+.navbar{display:flex;justify-content:space-around;align-items:center;background:#000;border-top:1px solid #121212;padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,15px));width:100%;flex-shrink:0;z-index:10;}
+.nav-btn{background:transparent;border:none;outline:none;display:flex;justify-content:center;align-items:center;cursor:pointer;padding:4px;transition:transform .1s ease;color:#fff;position:relative;}
+.nav-btn:active{transform:scale(.9);}
+.nav-btn svg{width:25px;height:25px;}
+.nav-btn .nav-badge{position:absolute;top:-2px;left:-2px;background:#ff3040;color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid #000;}
+.nav-btn.active{color:#ffb300;}
 </style>
 </head>
 <body>
-<div id="app">
-  <header>
-    <div class="brand">Camorro</div>
-    <div class="actions">
-      <button class="icon-btn" onclick="showSearch()" title="بحث">🔍</button>
-      <button class="icon-btn" onclick="logout()" title="خروج">🚪</button>
-    </div>
-  </header>
 
-  <main>
+<div class="container">
+
+  <!-- الشريط العلوي -->
+  <div class="header" id="mainHeader">
+    <div class="header-title" id="headerTitle">لك</div>
+    <div class="header-icons">
+      <svg id="notifBtn" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" onclick="showNotifications()">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+      </svg>
+      <span class="badge" id="notifBadge" style="display:none">0</span>
+    </div>
+  </div>
+
+  <!-- المحتوى -->
+  <div class="main-scrollable-content" id="scrollContent">
+
     <!-- التغذية -->
-    <section class="view" id="view-feed">
-      <div class="stories" id="storiesEl"></div>
+    <div class="view active" id="view-feed">
+      <div class="stories-container" id="storiesEl"></div>
       <div id="feedEl"><p class="loading-txt">جاري التحميل...</p></div>
-    </section>
+    </div>
+
+    <!-- الريلز -->
+    <div class="view" id="view-reels">
+      <div class="reels-container" id="reelsEl"><p class="loading-txt">جاري تحميل الريلز...</p></div>
+    </div>
+
+    <!-- الرسائل -->
+    <div class="view" id="view-messages">
+      <div id="convListEl"><p class="loading-txt">جاري تحميل المحادثات...</p></div>
+    </div>
 
     <!-- البحث -->
-    <section class="view" id="view-search" hidden>
-      <div class="search-box"><input id="searchInput" placeholder="ابحث عن مستخدمين..."></div>
-      <div id="resultsEl"><p class="muted center" style="padding:30px">ابحث عن مستخدمين بالاسم</p></div>
-    </section>
+    <div class="view" id="view-search">
+      <div class="search-box"><input id="searchInput" placeholder="ابحث عن أشخاص..."></div>
+      <div id="resultsEl"><p class="empty-box">ابحث عن مستخدمين بالاسم</p></div>
+    </div>
 
     <!-- الملف الشخصي -->
-    <section class="view" id="view-profile" hidden>
-      <div id="profileEl"></div>
-    </section>
-  </main>
+    <div class="view" id="view-profile">
+      <div id="profileEl"><p class="loading-txt">جاري التحميل...</p></div>
+    </div>
 
-  <nav>
-    <button class="active" data-view="feed" onclick="showFeed()"><span>🏠</span>الرئيسية</button>
-    <button data-view="search" onclick="showSearch()"><span>🔍</span>بحث</button>
-    <button class="add-tab" onclick="openCreate()">＋</button>
-    <button data-view="profile" onclick="showProfile(me.username)"><span>👤</span>حسابي</button>
-  </nav>
+    <!-- الإشعارات -->
+    <div class="view" id="view-notifications">
+      <div id="notifEl"><p class="loading-txt">جاري تحميل الإشعارات...</p></div>
+    </div>
+
+  </div>
+
+  <!-- الشريط السفلي -->
+  <div class="navbar">
+    <button class="nav-btn active" onclick="showFeed()">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.75 22h-4.25a.75.75 0 0 1-.75-.75v-5a1.5 1.5 0 0 0-1.5-1.5h-4.5a1.5 1.5 0 0 0-1.5 1.5v5a.75.75 0 0 1-.75.75H3.25A2.25 2.25 0 0 1 1 19.75V9.664a2.25 2.25 0 0 1 .737-1.688l8.25-7.22a2.25 2.25 0 0 1 2.973 0l8.303 7.224A2.25 2.25 0 0 1 22 9.673v10.077A2.25 2.25 0 0 1 20.75 22z"/></svg>
+    </button>
+    <button class="nav-btn" onclick="showReels()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="6"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="nav-btn" onclick="showMessages()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      <span class="nav-badge" id="msgBadge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" onclick="showSearch()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="nav-btn" onclick="showProfile(me.username)">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#1c2b3e" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="8.5" r="3.2" fill="#a0b2c6"/><path d="M5.5 19.5c1.5-3 3.5-4.5 6.5-4.5s5 1.5 6.5 4.5" stroke="#a0b2c6" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+    </button>
+  </div>
 
   <!-- مودال منشور جديد -->
   <div class="modal" id="createModal" hidden>
     <div class="modal-box">
       <h3>منشور جديد</h3>
-      <label class="file-label" id="imgLabel">
-        <input type="file" id="postMedia" accept="image/*,video/*" hidden>
-        <span id="mediaPreview">📷 اضغط لاختيار صورة أو فيديو</span>
-      </label>
-      <textarea id="postCaption" placeholder="اكتب وصفاً للمنشور..."></textarea>
-      <button class="publish" id="publishBtn" onclick="publishPost()">نشر</button>
+      <label class="file-label"><input type="file" id="postMedia" accept="image/*,video/*" hidden><span id="mediaPreview">📷 اضغط لاختيار صورة أو فيديو</span></label>
+      <textarea id="postCaption" placeholder="اكتب وصفاً..."></textarea>
+      <button class="publish" id="publishBtn" onclick="publishPost(false)">نشر</button>
       <button class="cancel" onclick="closeCreate()">إلغاء</button>
     </div>
   </div>
 
-  <!-- مودال قصة جديدة -->
-  <div class="modal" id="storyCreateModal" hidden>
+  <!-- مودال ريلز جديد -->
+  <div class="modal" id="reelModal" hidden>
+    <div class="modal-box">
+      <h3>ريلز جديد 🎬</h3>
+      <label class="file-label"><input type="file" id="reelMedia" accept="video/*" hidden><span id="reelPreview">🎬 اختر فيديو</span></label>
+      <textarea id="reelCaption" placeholder="اكتب وصفاً..."></textarea>
+      <button class="publish" id="reelPublishBtn" onclick="publishPost(true)">نشر الريلز</button>
+      <button class="cancel" onclick="closeReel()">إلغاء</button>
+    </div>
+  </div>
+
+  <!-- مودال قصة -->
+  <div class="modal" id="storyModal" hidden>
     <div class="modal-box">
       <h3>قصة جديدة (تختفي بعد 24 ساعة)</h3>
-      <label class="file-label">
-        <input type="file" id="storyMedia" accept="image/*,video/*" hidden>
-        <span id="storyPreview">📷 اختر صورة أو فيديو</span>
-      </label>
+      <label class="file-label"><input type="file" id="storyMedia" accept="image/*,video/*" hidden><span id="storyPreview">📷 اختر صورة أو فيديو</span></label>
       <button class="publish" id="storyPublishBtn" onclick="publishStory()">نشر القصة</button>
       <button class="cancel" onclick="closeStoryCreate()">إلغاء</button>
     </div>
   </div>
 
   <!-- عارض القصص -->
-  <div class="modal" id="storyModal" hidden style="align-items:center;background:#000;">
+  <div class="modal" id="storyViewerModal" hidden style="align-items:center;background:#000;">
     <div class="story-viewer">
       <div class="sv-progress" id="svProgress"></div>
       <div class="sv-head" id="svHead"></div>
-      <div class="sv-media" id="svMedia"></div>
+      <div class="sv-media" id="svMedia" onclick="nextStory()"></div>
     </div>
   </div>
 
@@ -204,468 +302,679 @@ nav .add-tab{width:44px;height:44px;border-radius:50%;background:linear-gradient
   <div class="modal" id="settingsModal" hidden>
     <div class="modal-box">
       <h3>تعديل الملف الشخصي</h3>
-      <label class="file-label" id="avatarLabel">
-        <input type="file" id="avatarInput" accept="image/*" hidden>
-        <span id="avatarPreview">🖼️ اضغط لتغيير الصورة الشخصية</span>
-      </label>
-      <textarea id="bioInput" placeholder="اكتب نبذة عنك..."></textarea>
+      <label class="file-label"><input type="file" id="avatarInput" accept="image/*" hidden><span id="avatarPreview">🖼️ اضغط لتغيير الصورة الشخصية</span></label>
+      <textarea id="bioInput" placeholder="نبذة عنك..."></textarea>
+      <div class="switch-row">
+        <span>حساب خاص 🔒 (لا يرى منشوراتك إلا متابعوك)</span>
+        <button class="switch" id="privacySwitch" onclick="togglePrivacy()"></button>
+      </div>
       <button class="publish" id="saveProfileBtn" onclick="saveProfile()">حفظ</button>
       <button class="cancel" onclick="closeSettings()">إلغاء</button>
     </div>
   </div>
+
+  <!-- مودال طلبات المتابعة -->
+  <div class="modal" id="requestsModal" hidden>
+    <div class="modal-box">
+      <h3>طلبات المتابعة</h3>
+      <div id="requestsEl"><p class="loading-txt">جاري التحميل...</p></div>
+      <button class="cancel" onclick="document.getElementById('requestsModal').hidden=true">إغلاق</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="config.js"></script>
 <script>
-/* ============ المتغيرات العامة ============ */
+/* ============ الحالة العامة ============ */
 const token = localStorage.getItem('camorro_token');
 let me = null;
 let currentProfileUser = null;
 let searchTimer = null;
-let storyList = [];
-let storyIndex = 0;
-let storyTimer = null;
+let storyList = [], storyIndex = 0, storyTimer = null;
+let activeConv = null;
+let globalTimer = null, chatTimer = null;
 
 const feedEl = document.getElementById('feedEl');
 const storiesEl = document.getElementById('storiesEl');
+const reelsEl = document.getElementById('reelsEl');
 const resultsEl = document.getElementById('resultsEl');
 const profileEl = document.getElementById('profileEl');
+const notifEl = document.getElementById('notifEl');
+const convListEl = document.getElementById('convListEl');
 const searchInput = document.getElementById('searchInput');
 
-/* ============ أدوات مساعدة ============ */
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
-}
-function timeAgo(iso) {
-  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (s < 60) return 'الآن';
-  const m = Math.floor(s / 60); if (m < 60) return m + ' دقيقة';
-  const h = Math.floor(m / 60); if (h < 24) return h + ' ساعة';
-  const d = Math.floor(h / 24); if (d < 7) return d + ' يوم';
+/* ============ أدوات ============ */
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+function timeAgo(iso){
+  const s=Math.floor((Date.now()-new Date(iso))/1000);
+  if(s<60)return 'الآن';
+  const m=Math.floor(s/60);if(m<60)return m+' د';
+  const h=Math.floor(m/60);if(h<24)return h+' س';
+  const d=Math.floor(h/24);if(d<7)return d+' ي';
   return new Date(iso).toLocaleDateString('ar');
 }
-/* تحويل روابط الملفات من الخادم إلى روابط كاملة */
-function assetUrl(url) {
-  if (!url) return '';
-  return /^https?:/.test(url) ? url : API_URL + url;
+function assetUrl(url){if(!url)return '';return /^https?:/.test(url)?url:API_URL+url;}
+function thumbUrl(url){if(!url)return '';if(url.includes('cloudinary.com'))return url.replace('/upload/','/upload/w_300/').replace(/\.[a-z0-9]+$/i,'.jpg');return url;}
+function avatarHTML(u,size,extra){
+  const letter=esc((u.username||'?')[0].toUpperCase());
+  return '<span class="avatar-inner" style="width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*0.4)+'px">'+letter
+    +(u.avatar_url?'<img src="'+assetUrl(u.avatar_url)+'" onerror="this.style.display=\'none\'">':'')+'</span>';
 }
-/* مصغّرة الفيديو من Cloudinary (إطار أول) */
-function thumbUrl(url) {
-  if (!url) return '';
-  if (/^https?:/.test(url) && url.includes('cloudinary.com')) {
-    return url.replace('/upload/', '/upload/w_300/').replace(/\.[a-z0-9]+$/i, '.jpg');
-  }
-  return url;
-}
-function avatarHTML(u, size) {
-  const letter = esc((u.username || '?')[0].toUpperCase());
-  return '<span class="avatar-wrap" style="width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.42) + 'px">'
-    + letter
-    + (u.avatar_url ? '<img src="' + assetUrl(u.avatar_url) + '" onerror="this.style.display=\'none\'">' : '')
-    + '</span>';
-}
-function mediaHTML(p, clickable) {
-  const src = assetUrl(p.media_url);
-  const onClick = clickable ? ' onclick="openPost(' + p.id + ')"' : '';
-  if (!src) return '';
-  if (p.media_type === 'video') {
-    return '<video class="post-media"' + onClick + ' src="' + src + '" controls playsinline preload="metadata"></video>';
-  }
-  return '<img class="post-media"' + onClick + ' src="' + src + '" loading="lazy" onerror="this.style.display=\'none\'">';
-}
-async function api(path, opts) {
-  opts = opts || {};
-  const headers = { 'Authorization': 'Bearer ' + token };
-  if (opts.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-  const res = await fetch(API_URL + path, Object.assign({}, opts, { headers: headers }));
-  const data = await res.json().catch(function () { return {}; });
-  if (!res.ok) throw new Error(data.error || 'حدث خطأ');
+async function api(path,opts){
+  opts=opts||{};
+  const headers={'Authorization':'Bearer '+token};
+  if(opts.body&&!(opts.body instanceof FormData))headers['Content-Type']='application/json';
+  const res=await fetch(API_URL+path,Object.assign({},opts,{headers}));
+  const data=await res.json().catch(function(){return{};});
+  if(!res.ok)throw new Error(data.error||'حدث خطأ');
   return data;
 }
-function setView(v) {
-  document.querySelectorAll('.view').forEach(function (el) { el.hidden = true; });
-  const el = document.getElementById('view-' + v);
-  if (el) el.hidden = false;
-  document.querySelectorAll('nav button').forEach(function (b) {
-    b.classList.toggle('active', b.dataset.view === v);
-  });
-  if (v === 'feed') currentProfileUser = null;
+function setView(v){
+  document.querySelectorAll('.view').forEach(function(el){el.classList.remove('active');});
+  const el=document.getElementById('view-'+v);
+  if(el)el.classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
+  const map={feed:0,reels:1,messages:2,search:3,profile:4};
+  const navBtns=document.querySelectorAll('.nav-btn');
+  if(map[v]!==undefined)navBtns[map[v]].classList.add('active');
+  document.getElementById('headerTitle').textContent=v==='feed'?'لك':(v==='messages'?'الرسائل':(v==='notifications'?'الإشعارات':(v==='profile'?'الملف الشخصي':(v==='reels'?'ريلز':'بحث'))));
+  document.getElementById('scrollContent').scrollTop=0;
+  if(v!=='feed')currentProfileUser=null;
+  if(v==='messages'&&!activeConv)loadConversations();
 }
 
 /* ============ التغذية ============ */
-async function showFeed() {
+async function showFeed(){
   setView('feed');
-  feedEl.innerHTML = '<p class="loading-txt">جاري تحميل المنشورات...</p>';
-  try {
-    const [posts, stories] = await Promise.all([api('/api/feed'), api('/api/stories')]);
+  feedEl.innerHTML='<p class="loading-txt">جاري التحميل...</p>';
+  try{
+    const [posts,stories]=await Promise.all([api('/api/feed'),api('/api/stories')]);
     renderStories(stories);
-    if (!posts.length) {
-      feedEl.innerHTML = '<div class="empty">لا توجد منشورات بعد<br>تابع مستخدمين أو انشر أول منشور لك 🚀<br><button onclick="openCreate()">انشر الآن</button></div>';
+    if(!posts.length){
+      feedEl.innerHTML='<div class="empty-box">لا توجد منشورات بعد<br>تابع مستخدمين أو انشر أول منشور لك 🚀<br><button onclick="openCreate()">انشر الآن</button></div>';
       return;
     }
-    feedEl.innerHTML = posts.map(function (p) { return postCard(p, ''); }).join('');
-  } catch (e) {
-    feedEl.innerHTML = '<p class="loading-txt">' + esc(e.message) + '</p>';
-  }
+    feedEl.innerHTML=posts.map(function(p){return postCard(p,'');}).join('');
+  }catch(e){feedEl.innerHTML='<p class="loading-txt">'+esc(e.message)+'</p>';}
 }
 
-function postCard(p, prefix) {
-  const mine = me && p.user_id === me.id;
-  return '<div class="post" data-post="' + p.id + '">'
-    + '<div class="post-head">'
-    + avatarHTML(p, 38)
-    + '<div class="post-user"><b onclick="showProfile(\'' + p.username + '\')">' + esc(p.username) + '</b>'
-    + '<small>' + timeAgo(p.created_at) + '</small></div>'
-    + (mine ? '<button class="del-btn" onclick="delPost(' + p.id + ')" title="حذف">🗑️</button>' : '')
-    + '</div>'
-    + mediaHTML(p, true)
-    + '<div class="post-actions">'
-    + '<button class="like-btn' + (p.liked_by_me ? ' liked' : '') + '" onclick="toggleLike(' + p.id + ',this)">' + (p.liked_by_me ? '❤️' : '🤍') + '</button>'
-    + '<button class="action-btn" onclick="document.getElementById(\'ci-' + prefix + p.id + '\').focus()">💬</button>'
-    + '</div>'
-    + '<div class="post-caption"><b onclick="showProfile(\'' + p.username + '\')">' + esc(p.username) + '</b>' + esc(p.caption)
-    + '<div class="like-count" id="lc-' + prefix + p.id + '">' + p.like_count + ' إعجاب</div></div>'
-    + '<div class="post-comments" id="comments-' + prefix + p.id + '">'
-    + '<button class="show-comments" onclick="loadComments(' + p.id + ',\'' + prefix + '\')">عرض التعليقات (' + p.comment_count + ')</button>'
-    + '</div>'
-    + '<div class="add-comment">'
-    + '<input id="ci-' + prefix + p.id + '" placeholder="أضف تعليقاً..." onkeydown="if(event.key===\'Enter\')addComment(' + p.id + ',\'' + prefix + '\')">'
-    + '<button onclick="addComment(' + p.id + ',\'' + prefix + '\')">نشر</button>'
-    + '</div></div>';
+function postCard(p,prefix){
+  const mine=me&&p.user_id===me.id;
+  return '<div class="post" data-post="'+p.id+'">'
+    +'<div class="post-header">'
+    +'<div class="user-info" onclick="showProfile(\''+p.username+'\')">'
+    +avatarHTML(p,36)+'<div class="user-details"><h4>'+esc(p.username)+'</h4><p>'+timeAgo(p.created_at)+'</p></div></div>'
+    +(mine?'<button class="follow-btn following" onclick="delPost('+p.id+')">حذف</button>':'')
+    +'</div>'
+    +(p.media_url?(p.media_type==='video'
+      ?'<video class="post-media" src="'+assetUrl(p.media_url)+'" controls playsinline preload="metadata" onclick="openPost('+p.id+')"></video>'
+      :'<img class="post-media" src="'+assetUrl(p.media_url)+'" loading="lazy" onclick="openPost('+p.id+')" onerror="this.style.display=\'none\'">'):'')
+    +'<div class="post-actions">'
+    +'<button class="like-btn'+(p.liked_by_me?' liked':'')+'" onclick="toggleLike('+p.id+',this)">'+(p.liked_by_me?'❤️':'🤍')+'</button>'
+    +'<button class="action-btn" onclick="document.getElementById(\'ci-'+prefix+p.id+'\').focus()">💬</button>'
+    +'</div>'
+    +'<div class="post-caption"><b onclick="showProfile(\''+p.username+'\')">'+esc(p.username)+'</b>'+esc(p.caption)
+    +'<div class="like-count" id="lc-'+prefix+p.id+'">'+p.like_count+' إعجاب</div></div>'
+    +'<div class="comments-area" id="comments-'+prefix+p.id+'">'
+    +'<button class="show-comments" onclick="loadComments('+p.id+',\''+prefix+'\')">عرض التعليقات ('+p.comment_count+')</button>'
+    +'</div>'
+    +'<div class="add-comment">'
+    +'<input id="ci-'+prefix+p.id+'" placeholder="أضف تعليقاً..." onkeydown="if(event.key===\'Enter\')addComment('+p.id+',\''+prefix+'\')">'
+    +'<button onclick="addComment('+p.id+',\''+prefix+'\')">نشر</button></div></div>';
 }
 
-/* ============ الستوري ============ */
-function renderStories(stories) {
-  let html = '<button class="story" id="myStoryRing">'
-    + '<span class="ring">' + avatarHTML(me, 59) + '</span><span>قصتك</span></button>';
-  stories.forEach(function (s) {
-    html += '<button class="story" data-id="' + s.user_id + '" data-name="' + esc(s.username) + '">'
-      + '<span class="ring">' + avatarHTML(s, 59) + '</span><span>' + esc(s.username) + '</span></button>';
+function renderStories(stories){
+  let html='<button class="story-item my-story" onclick="openStoryCreate()">'
+    +'<div class="avatar-ring">'+avatarHTML(me,67)+'<div class="plus-icon">+</div></div><span class="story-name">قصتك</span></button>';
+  stories.forEach(function(s){
+    html+='<button class="story-item" onclick="openStoryViewer('+s.user_id+',\''+s.username+'\')">'
+      +'<div class="avatar-ring">'+avatarHTML(s,67)+'</div><span class="story-name">'+esc(s.username)+'</span></button>';
   });
-  storiesEl.innerHTML = html;
-
-  document.getElementById('myStoryRing').onclick = openStoryCreate;
-  storiesEl.querySelectorAll('.story[data-id]').forEach(function (el) {
-    el.onclick = function () {
-      openStoryViewer(parseInt(el.dataset.id, 10), el.dataset.name);
-    };
-  });
+  storiesEl.innerHTML=html;
 }
 
-function openStoryCreate() {
-  document.getElementById('storyCreateModal').hidden = false;
+/* ============ الريلز ============ */
+async function showReels(){
+  setView('reels');
+  reelsEl.innerHTML='<p class="loading-txt">جاري تحميل الريلز...</p>';
+  try{
+    const reels=await api('/api/reels');
+    if(!reels.length){
+      reelsEl.innerHTML='<div class="empty-box">لا توجد ريلز بعد 🎬<br><button onclick="openReel()">انشر ريلز</button></div>';
+      return;
+    }
+    reelsEl.innerHTML=reels.map(function(r){
+      return '<div class="reel" data-reel="'+r.id+'">'
+        +'<video src="'+assetUrl(r.media_url)+'" controls playsinline preload="metadata" loop></video>'
+        +'<div class="reel-info"><b>'+esc(r.username)+'</b><br>'+esc(r.caption||'')+'</div>'
+        +'<div class="reel-side">'
+        +'<button onclick="toggleLike('+r.id+',this)"><span>'+(r.liked_by_me?'❤️':'🤍')+'</span>'+(r.like_count>0?r.like_count:'')+'</button>'
+        +'<button onclick="document.getElementById(\'rc-'+r.id+'\').focus()"><span>💬</span>'+(r.comment_count>0?r.comment_count:'')+'</button>'
+        +'</div>'
+        +'<div class="reel-caption"><input id="rc-'+r.id+'" placeholder="علق..." style="width:100%;background:transparent;border:1px solid #333;border-radius:18px;padding:8px 14px;color:#fff;font-size:12px;outline:none" onkeydown="if(event.key===\'Enter\')addComment('+r.id+',\'\')"></div>'
+        +'</div>';
+    }).join('');
+  }catch(e){reelsEl.innerHTML='<p class="loading-txt">'+esc(e.message)+'</p>';}
 }
-function closeStoryCreate() {
-  document.getElementById('storyCreateModal').hidden = true;
-  document.getElementById('storyMedia').value = '';
-  document.getElementById('storyPreview').textContent = '📷 اختر صورة أو فيديو';
-  document.getElementById('storyPublishBtn').disabled = false;
+
+/* ============ القصص ============ */
+function openStoryCreate(){document.getElementById('storyModal').hidden=false;}
+function closeStoryCreate(){
+  document.getElementById('storyModal').hidden=true;
+  document.getElementById('storyMedia').value='';
+  document.getElementById('storyPreview').textContent='📷 اختر صورة أو فيديو';
+  document.getElementById('storyPublishBtn').disabled=false;
 }
-document.getElementById('storyMedia').addEventListener('change', function (e) {
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = function (ev) {
-    const tag = f.type.startsWith('video/') ? 'video' : 'img';
-    document.getElementById('storyPreview').innerHTML = '<' + tag + ' src="' + ev.target.result + '" controls playsinline></' + tag + '>';
+document.getElementById('storyMedia').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=function(ev){
+    const tag=f.type.startsWith('video/')?'video':'img';
+    document.getElementById('storyPreview').innerHTML='<'+tag+' src="'+ev.target.result+'" controls playsinline></'+tag+'>';
   };
   r.readAsDataURL(f);
 });
-async function publishStory() {
-  const file = document.getElementById('storyMedia').files[0];
-  if (!file) return alert('اختر صورة أو فيديو أولاً');
-  const fd = new FormData();
-  fd.append('media', file);
-  const btn = document.getElementById('storyPublishBtn');
-  btn.disabled = true; btn.textContent = 'جاري النشر...';
-  try {
-    await api('/api/stories', { method: 'POST', body: fd });
-    closeStoryCreate();
-    showFeed();
-  } catch (e) {
+async function publishStory(){
+  const file=document.getElementById('storyMedia').files[0];
+  if(!file)return alert('اختر صورة أو فيديو أولاً');
+  const fd=new FormData();fd.append('media',file);
+  const btn=document.getElementById('storyPublishBtn');
+  btn.disabled=true;btn.textContent='جاري النشر...';
+  try{
+    await api('/api/stories',{method:'POST',body:fd});
+    closeStoryCreate();showFeed();
+  }catch(e){alert(e.message);btn.disabled=false;btn.textContent='نشر القصة';}
+}
+
+async function openStoryViewer(userId,username){
+  try{
+    const stories=await api('/api/users/'+userId+'/stories');
+    if(!stories.length){alert('لا توجد قصص متاحة');return;}
+    storyList=stories;storyIndex=0;
+    document.getElementById('storyViewerModal').hidden=false;
+    document.getElementById('svHead').innerHTML=
+      '<div>'+esc(username)+'<small>'+timeAgo(stories[0].created_at)+'</small></div>'
+      +'<button class="sv-close" onclick="closeStoryViewer()">✕</button>';
+    showStorySlide();
+  }catch(e){alert(e.message);}
+}
+function showStorySlide(){
+  const s=storyList[storyIndex];
+  if(!s){closeStoryViewer();return;}
+  document.getElementById('svMedia').innerHTML=
+    s.media_type==='video'
+      ?'<video src="'+assetUrl(s.media_url)+'" autoplay muted playsinline controls></video>'
+      :'<img src="'+assetUrl(s.media_url)+'">';
+  const bar=document.getElementById('svProgress');
+  bar.style.animation='none';void bar.offsetWidth;bar.style.animation='';
+  clearTimeout(storyTimer);
+  storyTimer=setTimeout(nextStory,5000);
+}
+function nextStory(){storyIndex++;showStorySlide();}
+function closeStoryViewer(){
+  clearTimeout(storyTimer);
+  document.getElementById('storyViewerModal').hidden=true;
+  document.getElementById('svMedia').innerHTML='';
+}
+
+/* ============ إعجاب وتعليقات ============ */
+async function toggleLike(postId,btn){
+  try{
+    const data=await api('/api/posts/'+postId+'/like',{method:'POST'});
+    if(btn.tagName==='BUTTON'&&btn.querySelector('span')){
+      btn.querySelector('span').textContent=data.liked?'❤️':'🤍';
+      btn.childNodes[1].textContent=data.like_count>0?' '+data.like_count:'';
+    }else{
+      btn.textContent=data.liked?'❤️':'🤍';
+      btn.classList.toggle('liked',data.liked);
+      const lc=document.getElementById('lc-'+postId);
+      if(lc)lc.textContent=data.like_count+' إعجاب';
+    }
+    refreshBadges();
+  }catch(e){alert(e.message);}
+}
+async function loadComments(postId,prefix){
+  const box=document.getElementById('comments-'+prefix+postId);
+  if(!box)return;
+  try{
+    const comments=await api('/api/posts/'+postId+'/comments');
+    box.innerHTML=comments.length
+      ?comments.map(function(c){return '<div class="comment-row"><b onclick="showProfile(\''+c.username+'\')">'+esc(c.username)+'</b>'+esc(c.body)+'</div>';}).join('')
+      :'<small style="color:#8e9aa8">لا توجد تعليقات بعد</small>';
+  }catch(e){}
+}
+async function addComment(postId,prefix){
+  const input=document.getElementById('ci-'+prefix+postId);
+  const body=input.value.trim();
+  if(!body)return;
+  try{
+    await api('/api/posts/'+postId+'/comments',{method:'POST',body:JSON.stringify({body:body})});
+    input.value='';
+    loadComments(postId,prefix);
+    refreshBadges();
+  }catch(e){alert(e.message);}
+}
+async function delPost(postId){
+  if(!confirm('حذف هذا المنشور؟'))return;
+  try{
+    await api('/api/posts/'+postId,{method:'DELETE'});
+    const el=document.querySelector('[data-post="'+postId+'"]');
+    if(el)el.remove();
+  }catch(e){alert(e.message);}
+}
+
+/* ============ مودال منشور ============ */
+function openCreate(){document.getElementById('createModal').hidden=false;}
+function closeCreate(){
+  document.getElementById('createModal').hidden=true;
+  document.getElementById('postMedia').value='';
+  document.getElementById('postCaption').value='';
+  document.getElementById('mediaPreview').textContent='📷 اضغط لاختيار صورة أو فيديو';
+  document.getElementById('publishBtn').disabled=false;
+}
+function openReel(){document.getElementById('reelModal').hidden=false;}
+function closeReel(){
+  document.getElementById('reelModal').hidden=true;
+  document.getElementById('reelMedia').value='';
+  document.getElementById('reelCaption').value='';
+  document.getElementById('reelPreview').textContent='🎬 اختر فيديو';
+  document.getElementById('reelPublishBtn').disabled=false;
+}
+function bindFilePreview(inputId,previewId){
+  const input=document.getElementById(inputId);
+  if(!input)return;
+  input.addEventListener('change',function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=function(ev){
+      const tag=f.type.startsWith('video/')?'video':'img';
+      document.getElementById(previewId).innerHTML='<'+tag+' src="'+ev.target.result+'" controls playsinline></'+tag+'>';
+    };
+    r.readAsDataURL(f);
+  });
+}
+bindFilePreview('postMedia','mediaPreview');
+bindFilePreview('reelMedia','reelPreview');
+bindFilePreview('avatarInput','avatarPreview');
+
+async function publishPost(isReel){
+  const mediaId=isReel?'reelMedia':'postMedia';
+  const capId=isReel?'reelCaption':'postCaption';
+  const btnId=isReel?'reelPublishBtn':'publishBtn';
+  const file=document.getElementById(mediaId).files[0];
+  const caption=document.getElementById(capId).value.trim();
+  if(!file&&!caption)return alert('أضف صورة/فيديو أو نصاً');
+  const fd=new FormData();
+  if(file)fd.append('media',file);
+  fd.append('caption',caption);
+  fd.append('is_reel',isReel?'true':'false');
+  const btn=document.getElementById(btnId);
+  btn.disabled=true;btn.textContent='جاري النشر...';
+  try{
+    await api('/api/posts',{method:'POST',body:fd});
+    if(isReel){closeReel();showReels();}else{closeCreate();showFeed();}
+  }catch(e){
     alert(e.message);
-    btn.disabled = false; btn.textContent = 'نشر القصة';
+    btn.disabled=false;btn.textContent=isReel?'نشر الريلز':'نشر';
   }
 }
 
-/* ============ عارض القصص ============ */
-async function openStoryViewer(userId, username) {
-  try {
-    const stories = await api('/api/users/' + userId + '/stories');
-    if (!stories.length) { alert('لا توجد قصص متاحة'); return; }
-    storyList = stories;
-    storyIndex = 0;
-    document.getElementById('storyModal').hidden = false;
-    document.getElementById('svHead').innerHTML =
-      '<div>' + username + '<small>' + timeAgo(stories[0].created_at) + '</small></div>'
-      + '<button class="sv-close" onclick="closeStoryViewer()">✕</button>';
-    showStorySlide();
-  } catch (e) { alert(e.message); }
-}
-function showStorySlide() {
-  const s = storyList[storyIndex];
-  if (!s) { closeStoryViewer(); return; }
-  document.getElementById('svMedia').innerHTML =
-    s.media_type === 'video'
-      ? '<video src="' + assetUrl(s.media_url) + '" autoplay muted playsinline controls></video>'
-      : '<img src="' + assetUrl(s.media_url) + '">';
-  const bar = document.getElementById('svProgress');
-  bar.style.animation = 'none';
-  void bar.offsetWidth;
-  bar.style.animation = '';
-  clearTimeout(storyTimer);
-  storyTimer = setTimeout(nextStory, 5000);
-}
-function nextStory() {
-  storyIndex++;
-  showStorySlide();
-}
-function closeStoryViewer() {
-  clearTimeout(storyTimer);
-  document.getElementById('storyModal').hidden = true;
-  document.getElementById('svMedia').innerHTML = '';
-}
-
-/* ============ الإعجاب والتعليقات ============ */
-async function toggleLike(postId, btn) {
-  try {
-    const data = await api('/api/posts/' + postId + '/like', { method: 'POST' });
-    btn.textContent = data.liked ? '❤️' : '🤍';
-    btn.classList.toggle('liked', data.liked);
-    const lc = document.getElementById('lc-' + postId);
-    if (lc) lc.textContent = data.like_count + ' إعجاب';
-  } catch (e) { alert(e.message); }
-}
-
-async function loadComments(postId, prefix) {
-  const box = document.getElementById('comments-' + prefix + postId);
-  if (!box) return;
-  try {
-    const comments = await api('/api/posts/' + postId + '/comments');
-    box.innerHTML = comments.length
-      ? comments.map(function (c) {
-          return '<div class="comment-row"><b onclick="showProfile(\'' + c.username + '\')">' + esc(c.username) + '</b>' + esc(c.body) + '</div>';
-        }).join('')
-      : '<small class="muted">لا توجد تعليقات بعد</small>';
-  } catch (e) { /* تجاهل */ }
-}
-
-async function addComment(postId, prefix) {
-  const input = document.getElementById('ci-' + prefix + postId);
-  const body = input.value.trim();
-  if (!body) return;
-  try {
-    await api('/api/posts/' + postId + '/comments', { method: 'POST', body: JSON.stringify({ body: body }) });
-    input.value = '';
-    loadComments(postId, prefix);
-    const btn = document.querySelector('[data-post="' + postId + '"] .show-comments');
-    if (btn) {
-      const m = btn.textContent.match(/\((\d+)\)/);
-      if (m) btn.textContent = btn.textContent.replace(m[0], '(' + (parseInt(m[1], 10) + 1) + ')');
-    }
-  } catch (e) { alert(e.message); }
-}
-
-async function delPost(postId) {
-  if (!confirm('هل تريد حذف هذا المنشور؟')) return;
-  try {
-    await api('/api/posts/' + postId, { method: 'DELETE' });
-    const el = document.querySelector('[data-post="' + postId + '"]');
-    if (el) el.remove();
-  } catch (e) { alert(e.message); }
-}
-
-/* ============ عرض منشور في مودال ============ */
-async function openPost(postId) {
-  try {
-    const p = await api('/api/posts/' + postId);
-    document.getElementById('postModalBody').innerHTML = postCard(p, 'm-');
-    document.getElementById('postModal').hidden = false;
-    loadComments(postId, 'm-');
-  } catch (e) { alert(e.message); }
+/* ============ عرض منشور ============ */
+async function openPost(postId){
+  try{
+    const p=await api('/api/posts/'+postId);
+    document.getElementById('postModalBody').innerHTML=postCard(p,'m-');
+    document.getElementById('postModal').hidden=false;
+    loadComments(postId,'m-');
+  }catch(e){alert(e.message);}
 }
 
 /* ============ البحث ============ */
-function showSearch() {
+function showSearch(){
   setView('search');
-  setTimeout(function () { searchInput.focus(); }, 50);
+  setTimeout(function(){searchInput.focus();},50);
 }
-searchInput.addEventListener('input', function () {
+searchInput.addEventListener('input',function(){
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(function () { runSearch(searchInput.value.trim()); }, 300);
+  searchTimer=setTimeout(function(){runSearch(searchInput.value.trim());},300);
 });
-async function runSearch(q) {
-  if (!q) {
-    resultsEl.innerHTML = '<p class="muted center" style="padding:30px">ابحث عن مستخدمين بالاسم</p>';
-    return;
-  }
-  resultsEl.innerHTML = '<p class="loading-txt">جاري البحث...</p>';
-  try {
-    const users = await api('/api/search?q=' + encodeURIComponent(q));
-    resultsEl.innerHTML = users.length
-      ? users.map(function (u) {
-          return '<div class="user-row">'
-            + avatarHTML(u, 42)
-            + '<div class="u-info" onclick="showProfile(\'' + u.username + '\')"><b>' + esc(u.username) + '</b>'
-            + '<small>' + esc(u.bio || '') + '</small></div>'
-            + '<button class="follow-btn' + (u.i_follow ? ' following' : '') + '" onclick="toggleFollow(' + u.id + ',this)">'
-            + (u.i_follow ? '✓ تتابعه' : 'متابعة') + '</button></div>';
-        }).join('')
-      : '<p class="muted center" style="padding:30px">لا توجد نتائج</p>';
-  } catch (e) {
-    resultsEl.innerHTML = '<p class="muted center" style="padding:30px">' + esc(e.message) + '</p>';
-  }
+async function runSearch(q){
+  if(!q){resultsEl.innerHTML='<p class="empty-box">ابحث عن مستخدمين بالاسم</p>';return;}
+  resultsEl.innerHTML='<p class="loading-txt">جاري البحث...</p>';
+  try{
+    const users=await api('/api/search?q='+encodeURIComponent(q));
+    resultsEl.innerHTML=users.length
+      ?users.map(function(u){
+        return '<div class="user-row">'+avatarHTML(u,42)
+          +'<div class="u-info" onclick="showProfile(\''+u.username+'\')"><b>'+esc(u.username)+(u.is_private?'<span class="priv-tag">خاص</span>':'')+'</b>'
+          +'<small>'+esc(u.bio||'')+'</small></div>'
+          +followButtonHTML(u)
+          +'</div>';
+      }).join('')
+      :'<p class="empty-box">لا توجد نتائج</p>';
+  }catch(e){resultsEl.innerHTML='<p class="empty-box">'+esc(e.message)+'</p>';}
 }
-
-/* ============ المتابعة ============ */
-async function toggleFollow(userId, btn) {
-  try {
-    const data = await api('/api/users/' + userId + '/follow', { method: 'POST' });
-    if (currentProfileUser) { showProfile(currentProfileUser); return; }
-    btn.textContent = data.following ? '✓ تتابعه' : 'متابعة';
-    btn.classList.toggle('following', data.following);
-  } catch (e) { alert(e.message); }
+function followButtonHTML(u){
+  if(u.id===me.id)return '';
+  if(u.pending)return '<button class="follow-btn following" onclick="cancelFollow('+u.id+',this)">طلب معلّق</button>';
+  if(u.i_follow)return '<button class="follow-btn following" onclick="cancelFollow('+u.id+',this)">✓ تتابعه</button>';
+  return '<button class="follow-btn" onclick="toggleFollow('+u.id+',this)">متابعة</button>';
+}
+async function toggleFollow(userId,btn){
+  try{
+    const data=await api('/api/users/'+userId+'/follow',{method:'POST'});
+    if(currentProfileUser){showProfile(currentProfileUser);return;}
+    if(data.pending){btn.textContent='طلب معلّق';btn.classList.add('following');}
+    else if(data.following){btn.textContent='✓ تتابعه';btn.classList.add('following');}
+    else{btn.textContent='متابعة';btn.classList.remove('following');}
+    refreshBadges();
+  }catch(e){alert(e.message);}
+}
+async function cancelFollow(userId,btn){
+  try{
+    await api('/api/users/'+userId+'/follow',{method:'POST'});
+    if(currentProfileUser){showProfile(currentProfileUser);return;}
+    btn.textContent='متابعة';btn.classList.remove('following');
+  }catch(e){alert(e.message);}
 }
 
 /* ============ الملف الشخصي ============ */
-async function showProfile(username) {
+async function showProfile(username){
   setView('profile');
-  currentProfileUser = username;
-  profileEl.innerHTML = '<p class="loading-txt">جاري التحميل...</p>';
-  try {
-    const u = await api('/api/users/' + encodeURIComponent(username));
-    const isMe = u.id === me.id;
-    let html = '<div class="profile-head">' + avatarHTML(u, 80)
-      + '<div class="p-stats">'
-      + '<div><b>' + u.post_count + '</b><span>منشور</span></div>'
-      + '<div><b>' + u.followers_count + '</b><span>متابع</span></div>'
-      + '<div><b>' + u.following_count + '</b><span>يتابع</span></div>'
-      + '</div></div>'
-      + '<div class="p-name"><b>' + esc(u.username) + '</b></div>'
-      + '<p class="p-bio">' + esc(u.bio || '') + '</p>'
-      + '<div class="p-actions">'
-      + (isMe
-          ? '<button class="edit-btn" onclick="openSettings()">تعديل الملف الشخصي</button>'
-          : '<button class="follow-btn big' + (u.i_follow ? ' following' : '') + '" onclick="toggleFollow(' + u.id + ',this)">'
-            + (u.i_follow ? 'إلغاء المتابعة' : 'متابعة') + '</button>')
-      + '</div>'
-      + '<div class="p-grid">';
-
-    if (u.posts.length) {
-      u.posts.forEach(function (p) {
-        const src = p.media_type === 'video' ? thumbUrl(p.media_url) : assetUrl(p.media_url);
-        html += '<div class="cell" onclick="openPost(' + p.id + ')">'
-          + (p.media_type === 'video' ? '<video src="' + assetUrl(p.media_url) + '" muted playsinline preload="metadata"></video><span class="video-badge">▶ فيديو</span>' : '<img src="' + src + '" loading="lazy">')
-          + '</div>';
-      });
-    } else {
-      html += '<p class="muted center" style="padding:30px;grid-column:1/-1">لا توجد منشورات بعد</p>';
+  currentProfileUser=username;
+  profileEl.innerHTML='<p class="loading-txt">جاري التحميل...</p>';
+  try{
+    const u=await api('/api/users/'+encodeURIComponent(username));
+    const isMe=u.id===me.id;
+    let html='<div class="profile-head">'
+      +'<div class="big-avatar">'+(u.username||'?')[0].toUpperCase()
+        +(u.avatar_url?'<img src="'+assetUrl(u.avatar_url)+'" onerror="this.style.display=\'none\'">':'')
+      +'</div>'
+      +'<div class="p-stats">'
+      +'<div><b>'+u.post_count+'</b><span>منشور</span></div>'
+      +'<div><b>'+u.followers_count+'</b><span>متابع</span></div>'
+      +'<div><b>'+u.following_count+'</b><span>يتابع</span></div>'
+      +'</div></div>'
+      +'<div class="p-name">'+esc(u.username)+(u.is_private?' <span class="priv-tag">🔒 خاص</span>':'')+'</div>'
+      +'<p class="p-bio">'+esc(u.bio||'')+'</p>'
+      +'<div class="p-actions">';
+    if(isMe){
+      html+='<button onclick="openSettings()">تعديل الملف</button>'
+        +'<button onclick="showRequests()">طلبات المتابعة</button>'
+        +'<button onclick="logout()" style="color:#ff3040">خروج</button>';
+    }else if(!u.can_view){
+      html+='<button class="primary" onclick="sendFollowFromProfile()">متابعة</button>';
+    }else if(u.following){
+      html+='<button class="following" onclick="toggleFollow('+u.id+',this)">'+(u.pending?'طلب معلّق':'إلغاء المتابعة')+'</button>'
+        +'<button class="primary" onclick="startChat('+u.id+',\''+u.username+'\')">💬 رسالة</button>';
+    }else{
+      html+='<button class="primary" onclick="toggleFollow('+u.id+',this)">متابعة</button>'
+        +'<button onclick="startChat('+u.id+',\''+u.username+'\')">💬 رسالة</button>';
     }
-    html += '</div>';
-    profileEl.innerHTML = html;
-  } catch (e) {
-    profileEl.innerHTML = '<p class="muted center" style="padding:30px">' + esc(e.message) + '</p>';
-  }
-}
-
-/* ============ إنشاء منشور ============ */
-function openCreate() {
-  document.getElementById('createModal').hidden = false;
-}
-function closeCreate() {
-  document.getElementById('createModal').hidden = true;
-  document.getElementById('postMedia').value = '';
-  document.getElementById('postCaption').value = '';
-  document.getElementById('mediaPreview').textContent = '📷 اضغط لاختيار صورة أو فيديو';
-  document.getElementById('publishBtn').disabled = false;
-  document.getElementById('publishBtn').textContent = 'نشر';
-}
-document.getElementById('postMedia').addEventListener('change', function (e) {
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = function (ev) {
-    const tag = f.type.startsWith('video/') ? 'video' : 'img';
-    document.getElementById('mediaPreview').innerHTML = '<' + tag + ' src="' + ev.target.result + '" controls playsinline></' + tag + '>';
-  };
-  r.readAsDataURL(f);
-});
-async function publishPost() {
-  const file = document.getElementById('postMedia').files[0];
-  const caption = document.getElementById('postCaption').value.trim();
-  if (!file && !caption) return alert('أضف صورة/فيديو أو نصاً على الأقل');
-  const fd = new FormData();
-  if (file) fd.append('media', file);
-  fd.append('caption', caption);
-  const btn = document.getElementById('publishBtn');
-  btn.disabled = true; btn.textContent = 'جاري النشر...';
-  try {
-    await api('/api/posts', { method: 'POST', body: fd });
-    closeCreate();
-    showFeed();
-  } catch (e) {
-    alert(e.message);
-    btn.disabled = false; btn.textContent = 'نشر';
-  }
-}
-
-/* ============ الإعدادات (تعديل الملف) ============ */
-function openSettings() {
-  document.getElementById('bioInput').value = me.bio || '';
-  document.getElementById('avatarPreview').innerHTML = '<img src="' + assetUrl(me.avatar_url) + '">';
-  document.getElementById('settingsModal').hidden = false;
-}
-function closeSettings() {
-  document.getElementById('settingsModal').hidden = true;
-  document.getElementById('avatarInput').value = '';
-}
-document.getElementById('avatarInput').addEventListener('change', function (e) {
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = function (ev) {
-    document.getElementById('avatarPreview').innerHTML = '<img src="' + ev.target.result + '">';
-  };
-  r.readAsDataURL(f);
-});
-async function saveProfile() {
-  const btn = document.getElementById('saveProfileBtn');
-  btn.disabled = true; btn.textContent = 'جاري الحفظ...';
-  try {
-    const avatarFile = document.getElementById('avatarInput').files[0];
-    if (avatarFile) {
-      const fd = new FormData();
-      fd.append('avatar', avatarFile);
-      me = await api('/api/me/avatar', { method: 'POST', body: fd });
+    html+='</div>';
+    if(!u.can_view&&!isMe){
+      html+='<div class="private-lock">🔒 هذا الحساب خاص<br>تابعه لتشاهد منشوراته</div>';
+    }else if(u.posts.length){
+      html+='<div class="p-grid">'+u.posts.map(function(p){
+        const src=p.media_type==='video'?thumbUrl(p.media_url):assetUrl(p.media_url);
+        return '<div class="cell" onclick="openPost('+p.id+')">'
+          +(p.media_type==='video'?'<video src="'+assetUrl(p.media_url)+'" muted playsinline preload="metadata"></video><span class="video-badge">▶</span>':'<img src="'+src+'" loading="lazy">')
+          +'</div>';
+      }).join('')+'</div>';
+    }else{
+      html+='<div class="private-lock">لا توجد منشورات بعد</div>';
     }
-    me = await api('/api/me', { method: 'PATCH', body: JSON.stringify({ bio: document.getElementById('bioInput').value }) });
+    profileEl.innerHTML=html;
+  }catch(e){profileEl.innerHTML='<p class="empty-box">'+esc(e.message)+'</p>';}
+}
+async function sendFollowFromProfile(){
+  try{
+    await api('/api/users/'+currentProfileUser+'/follow',{method:'POST'});
+    // نحتاج id المستخدم: أعد تحميل الملف
+    const u=await api('/api/users/'+encodeURIComponent(currentProfileUser));
+    if(!u.id){return;}
+    await api('/api/users/'+u.id+'/follow',{method:'POST'});
+    alert('تم إرسال طلب المتابعة ✅');
+    showProfile(currentProfileUser);
+  }catch(e){alert(e.message);}
+}
+
+/* ============ الإعدادات ============ */
+let privacyOn=false;
+function openSettings(){
+  document.getElementById('bioInput').value=me.bio||'';
+  document.getElementById('avatarPreview').innerHTML=me.avatar_url?'<img src="'+assetUrl(me.avatar_url)+'">':'🖼️ اضغط لتغيير الصورة الشخصية';
+  privacyOn=!!me.is_private;
+  const sw=document.getElementById('privacySwitch');
+  sw.classList.toggle('on',privacyOn);
+  document.getElementById('settingsModal').hidden=false;
+}
+function closeSettings(){
+  document.getElementById('settingsModal').hidden=true;
+  document.getElementById('avatarInput').value='';
+}
+function togglePrivacy(){
+  privacyOn=!privacyOn;
+  document.getElementById('privacySwitch').classList.toggle('on',privacyOn);
+}
+async function saveProfile(){
+  const btn=document.getElementById('saveProfileBtn');
+  btn.disabled=true;btn.textContent='جاري الحفظ...';
+  try{
+    const avatarFile=document.getElementById('avatarInput').files[0];
+    if(avatarFile){
+      const fd=new FormData();fd.append('avatar',avatarFile);
+      me=await api('/api/me/avatar',{method:'POST',body:fd});
+    }
+    me=await api('/api/me',{method:'PATCH',body:JSON.stringify({
+      bio:document.getElementById('bioInput').value,
+      is_private:privacyOn
+    })});
     closeSettings();
     showProfile(me.username);
-  } catch (e) {
+  }catch(e){
     alert(e.message);
-    btn.disabled = false; btn.textContent = 'حفظ';
+    btn.disabled=false;btn.textContent='حفظ';
   }
+}
+
+/* ============ طلبات المتابعة ============ */
+async function showRequests(){
+  document.getElementById('requestsModal').hidden=false;
+  document.getElementById('requestsEl').innerHTML='<p class="loading-txt">جاري التحميل...</p>';
+  try{
+    const reqs=await api('/api/follow-requests');
+    document.getElementById('requestsEl').innerHTML=reqs.length
+      ?reqs.map(function(r){
+        return '<div class="user-row">'+avatarHTML(r,42)
+          +'<div class="u-info"><b>'+esc(r.username)+'</b><small>'+esc(r.bio||'')+'</small></div>'
+          +'<button class="follow-btn" onclick="acceptRequest('+r.id+',this)">قبول</button>'
+          +'<button class="follow-btn following" onclick="rejectRequest('+r.id+',this)">رفض</button>'
+          +'</div>';
+      }).join('')
+      :'<p class="empty-box">لا توجد طلبات متابعة</p>';
+  }catch(e){document.getElementById('requestsEl').innerHTML='<p class="empty-box">'+esc(e.message)+'</p>';}
+}
+async function acceptRequest(userId,btn){
+  try{
+    await api('/api/follow-requests/'+userId+'/accept',{method:'POST'});
+    btn.closest('.user-row').remove();
+    refreshBadges();
+  }catch(e){alert(e.message);}
+}
+async function rejectRequest(userId,btn){
+  try{
+    await api('/api/follow-requests/'+userId+'/reject',{method:'POST'});
+    btn.closest('.user-row').remove();
+  }catch(e){alert(e.message);}
+}
+
+/* ============ الإشعارات ============ */
+async function showNotifications(){
+  setView('notifications');
+  notifEl.innerHTML='<p class="loading-txt">جاري التحميل...</p>';
+  try{
+    const notes=await api('/api/notifications');
+    api('/api/notifications/read',{method:'POST'});
+    notifEl.innerHTML=notes.length
+      ?notes.map(function(n){
+        const txt=notifText(n);
+        return '<div class="notif-row'+(n.is_read?'':' unread')+'">'
+          +avatarHTML(n,42)
+          +'<div class="notif-text"><b onclick="showProfile(\''+n.actor_name+'\')">'+esc(n.actor_name)+'</b> '+txt
+          +'<span class="time">'+timeAgo(n.created_at)+'</span></div>'
+          +'<span class="notif-ic">'+notifIcon(n.type)+'</span></div>';
+      }).join('')
+      :'<p class="empty-box">لا توجد إشعارات بعد<br>❤️ ستصلك هنا الإعجابات والتعليقات والمتابعات</p>';
+    refreshBadges();
+  }catch(e){notifEl.innerHTML='<p class="empty-box">'+esc(e.message)+'</p>';}
+}
+function notifIcon(type){
+  if(type==='like')return '❤️';
+  if(type==='comment')return '💬';
+  if(type==='follow')return '👤';
+  if(type==='follow_request')return '🔔';
+  return '✨';
+}
+function notifText(n){
+  if(n.type==='like')return 'أعجب بمنشورك';
+  if(n.type==='comment')return 'علّق على منشورك';
+  if(n.type==='follow')return 'بدأ متابعتك';
+  if(n.type==='follow_request')return 'طلب متابعتك';
+  return '';
+}
+
+/* ============ الرسائل ============ */
+function showMessages(){
+  setView('messages');
+  activeConv=null;
+  loadConversations();
+}
+async function loadConversations(){
+  convListEl.innerHTML='<p class="loading-txt">جاري تحميل المحادثات...</p>';
+  try{
+    const convs=await api('/api/conversations');
+    convListEl.innerHTML=convs.length
+      ?convs.map(function(c){
+        const last=c.last_media?'🖼️ صورة':esc(c.last_body||'');
+        return '<div class="conv-row" onclick="openConversation('+c.id+',\''+c.other_name+'\')">'
+          +'<div class="mini-avatar">'+c.other_name[0].toUpperCase()
+            +(c.other_avatar?'<img src="'+assetUrl(c.other_avatar)+'" onerror="this.style.display=\'none\'">':'')
+          +'</div>'
+          +'<div class="conv-info"><b>'+esc(c.other_name)+'</b>'
+          +'<p>'+(c.last_at?timeAgo(c.last_at)+' — ':'')+last+'</p></div>'
+          +(c.unread>0?'<span class="conv-unread">'+c.unread+'</span>':'')
+          +'</div>';
+      }).join('')
+      :'<div class="chat-empty">لا توجد محادثات بعد 💬<br>ابحث عن مستخدم واضغط "💬 رسالة" لبدء محادثة</div>';
+  }catch(e){convListEl.innerHTML='<p class="empty-box">'+esc(e.message)+'</p>';}
+}
+async function startChat(userId,username){
+  try{
+    const data=await api('/api/conversations',{method:'POST',body:JSON.stringify({user_id:userId})});
+    openConversation(data.conversation_id,username);
+  }catch(e){alert(e.message);}
+}
+function openConversation(convId,otherName){
+  activeConv={id:convId,name:otherName};
+  convListEl.innerHTML='<div class="chat-box">'
+    +'<div class="msg-top"><button onclick="backToConvs()">→</button><b>'+esc(otherName)+'</b></div>'
+    +'<div class="chat-messages" id="chatMsgs"></div>'
+    +'<div class="chat-input">'
+    +'<label style="cursor:pointer" title="إرسال صورة/فيديو"><input type="file" id="chatFile" accept="image/*,video/*" hidden onchange="sendChatMedia()">📷</label>'
+    +'<input id="chatText" placeholder="اكتب رسالة..." onkeydown="if(event.key===\'Enter\')sendChat()">'
+    +'<button onclick="sendChat()">➤</button>'
+    +'</div></div>';
+  loadMessages();
+  clearInterval(chatTimer);
+  chatTimer=setInterval(loadMessages,4000);
+}
+function backToConvs(){
+  clearInterval(chatTimer);
+  activeConv=null;
+  loadConversations();
+}
+async function loadMessages(){
+  if(!activeConv)return;
+  const box=document.getElementById('chatMsgs');
+  if(!box)return;
+  try{
+    const msgs=await api('/api/conversations/'+activeConv.id+'/messages');
+    const oldScroll=box.scrollHeight;
+    box.innerHTML=msgs.map(function(m){
+      const mine=m.sender_id===me.id;
+      const content=m.media_url
+        ?(m.media_url.includes('.mp4')||m.media_url.includes('.mov')
+          ?'<video src="'+assetUrl(m.media_url)+'" controls playsinline></video>'
+          :'<img src="'+assetUrl(m.media_url)+'">')
+        :esc(m.body);
+      return '<div class="msg-bubble '+(mine?'msg-mine':'msg-other')+'">'+content
+        +'<span class="msg-time">'+timeAgo(m.created_at)+'</span></div>';
+    }).join('')||'<p class="chat-empty">ابدأ المحادثة 👋</p>';
+    box.scrollTop=box.scrollHeight;
+    refreshBadges();
+  }catch(e){}
+}
+async function sendChat(){
+  const input=document.getElementById('chatText');
+  const body=input.value.trim();
+  if(!body||!activeConv)return;
+  input.value='';
+  try{
+    await api('/api/conversations/'+activeConv.id+'/messages',{method:'POST',body:JSON.stringify({body:body})});
+    loadMessages();
+  }catch(e){alert(e.message);}
+}
+async function sendChatMedia(){
+  const file=document.getElementById('chatFile').files[0];
+  if(!file||!activeConv)return;
+  const fd=new FormData();fd.append('media',file);
+  try{
+    await api('/api/conversations/'+activeConv.id+'/messages/media',{method:'POST',body:fd});
+    document.getElementById('chatFile').value='';
+    loadMessages();
+  }catch(e){alert(e.message);}
+}
+
+/* ============ الشارات والاستطلاع ============ */
+async function refreshBadges(){
+  try{
+    const [notif,msg]=await Promise.all([
+      api('/api/notifications/unread'),
+      api('/api/messages/unread-total')
+    ]);
+    const nb=document.getElementById('notifBadge');
+    nb.style.display=notif.count>0?'flex':'none';
+    nb.textContent=notif.count>99?'99+':notif.count;
+    const mb=document.getElementById('msgBadge');
+    mb.style.display=msg.count>0?'flex':'none';
+    mb.textContent=msg.count>99?'99+':msg.count;
+  }catch(e){}
 }
 
 /* ============ خروج ============ */
-function logout() {
+function logout(){
   localStorage.removeItem('camorro_token');
-  location.href = 'index.html';
+  location.href='index.html';
 }
 
-/* ============ تشغيل ============ */
-(async function init() {
-  if (!token) { location.href = 'index.html'; return; }
-  try {
-    me = await api('/api/me');
+/* ============ التشغيل ============ */
+(async function init(){
+  if(!token){location.href='index.html';return;}
+  try{
+    me=await api('/api/me');
     showFeed();
-  } catch (e) {
+    refreshBadges();
+    globalTimer=setInterval(function(){
+      refreshBadges();
+      if(activeConv)loadMessages();
+    },6000);
+  }catch(e){
     localStorage.removeItem('camorro_token');
-    location.href = 'index.html';
+    location.href='index.html';
   }
 })();
 </script>
 </body>
-        </html>
+</html>
