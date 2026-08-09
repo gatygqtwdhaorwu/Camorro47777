@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>تسجيل دخول كامورو</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,Cantarell,sans-serif;-webkit-tap-highlight-color:transparent;}
+body{background:#0f1c2e;color:white;height:100vh;height:-webkit-fill-available;display:flex;justify-content:center;align-items:center;overflow:hidden;}
+.splash{position:fixed;top:0;left:0;width:100%;height:100%;background:#0f1c2e;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity .5s ease;padding-bottom:env(safe-area-inset-bottom,40px);}
+.splash svg{width:110px;height:110px;margin-bottom:20px;}
+.metaSplash{position:absolute;bottom:calc(40px + env(safe-area-inset-bottom));text-align:center;color:#8e9aa8;font-size:14px;letter-spacing:1px;width:100%;}
+.metaSplash strong{font-size:22px;background:linear-gradient(45deg,#ffe082,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:block;margin-top:5px;font-weight:700;}
+.container{display:none;width:100%;max-width:414px;height:100%;padding:30px 24px calc(20px + env(safe-area-inset-bottom)) 24px;flex-direction:column;align-items:center;justify-content:space-between;}
+.container.active{display:flex;}
+.main-content{width:100%;display:flex;flex-direction:column;align-items:center;margin-top:30px;}
+.logo{margin-bottom:40px;}
+.logo svg{width:90px;height:90px;box-shadow:0 10px 25px rgba(0,0,0,.3);border-radius:24px;}
+.input-box{width:100%;margin-bottom:16px;}
+.input-box input{width:100%;height:56px;border:1.5px solid #22354f;border-radius:16px;background:#16263d;color:white;font-size:15px;padding:0 18px;outline:none;transition:.2s;text-align:right;}
+.input-box input:focus{border-color:#ffb300;}
+.input-box input::placeholder{color:#738499;}
+.login-btn{width:100%;height:54px;border:none;border-radius:27px;background:linear-gradient(90deg,#ffb300,#b78103);color:#0f1c2e;font-size:16px;font-weight:bold;cursor:pointer;margin-top:10px;box-shadow:0 4px 15px rgba(255,179,0,.2);}
+.login-btn:disabled{opacity:.6;}
+.forgot{margin-top:22px;color:#ffb300;text-decoration:none;font-size:14px;font-weight:500;}
+.bottom{width:100%;text-align:center;}
+.create{width:100%;height:50px;border:1.5px solid #ffb300;border-radius:25px;background:transparent;color:#ffb300;font-size:15px;font-weight:600;cursor:pointer;margin-top:25px;}
+.meta{margin-top:15px;font-size:14px;color:#8e9aa8;font-weight:500;}
+.error-msg{color:#ff5252;font-size:13px;display:none;margin-bottom:15px;text-align:center;}
+.loading-screen{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f1c2e;z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:15px;touch-action:none;user-select:none;}
+.loading-screen .spinner{width:42px;height:42px;border:4px solid #16263d;border-top-color:#ffb300;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-screen p{font-size:15px;color:#8e9aa8;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute;top:-9999px;left:-9999px;" aria-hidden="true">
+  <defs>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="30%" stop-color="#FFD54F"/>
+      <stop offset="70%" stop-color="#FFB300"/>
+      <stop offset="100%" stop-color="#B78103"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="splash" id="splash">
+  <svg viewBox="0 0 100 100" fill="none">
+    <rect width="100" height="100" rx="28" fill="#16263d"/>
+    <circle cx="50" cy="50" r="34" stroke="url(#goldGrad)" stroke-width="3" fill="none" stroke-dasharray="14 6"/>
+    <path d="M30 66 V34 L50 52 L70 34 V66" stroke="url(#goldGrad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div class="metaSplash"><span>من طرف</span><strong style="margin-top:8px;">Camorro</strong></div>
+</div>
+
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <p id="loadingText">جاري تسجيل الدخول...</p>
+</div>
+
+<div class="container active" id="loginContainer">
+  <div class="main-content">
+    <div class="logo">
+      <svg viewBox="0 0 100 100" fill="none">
+        <rect width="100" height="100" rx="28" fill="#16263d"/>
+        <circle cx="50" cy="50" r="34" stroke="url(#goldGrad)" stroke-width="3" fill="none" stroke-dasharray="14 6"/>
+        <path d="M30 66 V34 L50 52 L70 34 V66" stroke="url(#goldGrad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <div class="input-box"><input type="text" id="username" placeholder="اسم المستخدم أو البريد الإلكتروني"></div>
+    <div class="input-box"><input type="password" id="password" placeholder="كلمة المرور"></div>
+
+    <div class="error-msg" id="loginError"></div>
+
+    <button class="login-btn" id="loginBtn">تسجيل الدخول</button>
+    <a href="#" class="forgot" id="forgotLink">هل نسيت كلمة السر؟</a>
+  </div>
+
+  <div class="bottom">
+    <button class="create" id="createBtn">إنشاء حساب جديد</button>
+    <div class="meta">Camorro App v1.0</div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  // إذا كان المستخدم مسجلاً بالفعل → ادخله مباشرة
+  if (localStorage.getItem('camorro_token')) {
+    window.location.href = 'home.html';
+    return;
+  }
+
+  var splash        = document.getElementById('splash');
+  var loadingScreen = document.getElementById('loadingScreen');
+  var username      = document.getElementById('username');
+  var password      = document.getElementById('password');
+  var loginBtn      = document.getElementById('loginBtn');
+  var loginError    = document.getElementById('loginError');
+
+  setTimeout(function () { if (splash) splash.style.opacity = '0'; }, 2000);
+  setTimeout(function () { if (splash) splash.style.display = 'none'; }, 2500);
+
+  loginBtn.addEventListener('click', async function (e) {
+    e.preventDefault();
+    loginError.style.display = 'none';
+
+    var identifier = username.value.trim();
+    var pass = password.value;
+    if (!identifier || !pass) {
+      loginError.textContent = 'يرجى ملء جميع الحقول.';
+      loginError.style.display = 'block';
+      return;
+    }
+
+    loadingScreen.style.display = 'flex';
+    loginBtn.disabled = true;
+
+    try {
+      var res = await fetch(API_URL + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: identifier, password: pass })
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'حدث خطأ');
+
+      localStorage.setItem('camorro_token', data.token);
+      window.location.href = 'home.html';
+    } catch (err) {
+      loadingScreen.style.display = 'none';
+      loginBtn.disabled = false;
+      loginError.textContent = err.message;
+      loginError.style.display = 'block';
+    }
+  });
+
+  document.getElementById('forgotLink').addEventListener('click', function (e) {
+    e.preventDefault();
+    alert('استعادة كلمة السر ستتوفر قريباً.');
+  });
+
+  document.getElementById('createBtn').addEventListener('click', function (e) {
+    e.preventDefault();
+    window.location.href = 'register.html';
+  });
+
+  password.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loginBtn.click();
+  });
+})();
+</script>
+</body>
+</html>
