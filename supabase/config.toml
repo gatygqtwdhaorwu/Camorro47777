@@ -1,0 +1,11 @@
+project_id = "camorro"
+
+[api]
+enabled = true
+
+[functions]
+enabled = true
+verify_jwt = false   # ⚠️ إيقاف فحص JWT التلقائي — الدالة تفحص بنفسها
+
+[functions.api]
+verify_jwt = false
