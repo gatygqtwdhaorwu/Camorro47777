@@ -9,15 +9,20 @@
 body{background:#0a0a0a;color:#fff;min-height:100vh}
 .hidden{display:none!important}
 
-/* ===== شاشة الدخول ===== */
+/* ===== شاشة تسجيل الدخول ===== */
 #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.login-box{width:100%;max-width:360px;background:#131313;border:1px solid #222;border-radius:16px;padding:30px 24px;text-align:center}
+.login-box{width:100%;max-width:380px;background:#131313;border:1px solid #222;border-radius:16px;padding:34px 26px;text-align:center}
 .login-box h1{font-size:22px;margin-bottom:6px;background:linear-gradient(90deg,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.login-box p{color:#8e9aa8;font-size:13px;margin-bottom:18px}
-.login-box input{width:100%;height:46px;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:10px;padding:0 14px;color:#fff;font-size:14px;outline:none;margin-bottom:12px;text-align:center}
+.login-box p{color:#8e9aa8;font-size:13px;margin-bottom:20px}
+.login-box input{width:100%;height:48px;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:10px;padding:0 14px;color:#fff;font-size:14px;outline:none;margin-bottom:12px;text-align:center}
 .login-box input:focus{border-color:#ffb300}
-.login-box button{width:100%;height:46px;border:none;border-radius:23px;background:linear-gradient(90deg,#ffb300,#b78103);color:#000;font-size:15px;font-weight:700;cursor:pointer}
-.err{color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px}
+.login-box input:disabled{opacity:.5}
+.login-box button{width:100%;height:48px;border:none;border-radius:24px;background:linear-gradient(90deg,#ffb300,#b78103);color:#000;font-size:15px;font-weight:700;cursor:pointer;transition:.2s}
+.login-box button:hover{opacity:.9}
+.login-box button:active{transform:scale(.98)}
+.login-box button:disabled{opacity:.5;cursor:wait}
+.err{color:#ff6b6b;font-size:13px;margin-bottom:10px;min-height:18px;word-break:break-word}
+.hint{color:#5c6b7a;font-size:12px;margin-top:14px;border-top:1px solid #222;padding-top:12px}
 
 /* ===== الهيدر ===== */
 header{position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #1c1c1c;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;z-index:10;flex-wrap:wrap;gap:8px}
@@ -46,7 +51,7 @@ main{padding:16px 20px;max-width:900px;margin:0 auto}
 .search-row button{border:none;border-radius:10px;padding:0 18px;background:#ffb300;color:#000;font-weight:700;cursor:pointer}
 .list{display:flex;flex-direction:column;gap:8px}
 .row{background:#131313;border:1px solid #1f1f1f;border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.thumb{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#1c1c1c;flex-shrink:0;overflow:hidden}
+.thumb{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#1c1c1c;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:20px;color:#ffb300}
 .thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
 .main{flex:1;min-width:150px;display:flex;flex-direction:column;gap:3px}
 .main b{font-size:14px}
@@ -67,14 +72,19 @@ main{padding:16px 20px;max-width:900px;margin:0 auto}
   <div class="login-box">
     <h1>كامورو — لوحة التحكم</h1>
     <p>سجّل الدخول بحساب أدمن للمتابعة</p>
-    <input type="text" id="adminUser" placeholder="اسم المستخدم" autocomplete="username">
-    <input type="password" id="adminPass" placeholder="كلمة المرور" autocomplete="current-password">
-    <div class="err" id="loginErr"></div>
-    <button id="loginBtn">تسجيل الدخول</button>
+
+    <form id="loginForm" onsubmit="return doLogin(event)" autocomplete="on">
+      <input type="text" id="adminUser" placeholder="اسم المستخدم" autocomplete="username" required>
+      <input type="password" id="adminPass" placeholder="كلمة المرور" autocomplete="current-password" required>
+      <div class="err" id="loginErr"></div>
+      <button type="submit" id="loginBtn">تسجيل الدخول</button>
+    </form>
+
+    <div class="hint" id="loginHint">الحساب الافتراضي: camorro / admin123</div>
   </div>
 </div>
 
-<!-- ===== اللوحة ===== -->
+<!-- ===== لوحة التحكم ===== -->
 <div id="panel" class="hidden">
   <header>
     <h1>لوحة تحكم كامورو</h1>
@@ -116,65 +126,127 @@ main{padding:16px 20px;max-width:900px;margin:0 auto}
 
 <script src="config.js"></script>
 <script>
+/* ============================================================
+   كامورو — لوحة التحكم (نسخة معدلة بالكامل)
+   زر الدخول: form + onsubmit + onclick = يعمل دائماً
+   ============================================================ */
+
 var KEY = 'camorro_admin_key';
-var token = localStorage.getItem(KEY) || '';
+var NAME_KEY = 'camorro_admin_name';
+var API = (typeof API_URL !== 'undefined' ? API_URL : 'https://camorro47777.onrender.com');
 var curTab = 'users';
 
-/* ===== دالة الطلبات: ترسل توكن الأدمن مع كل طلب ===== */
+/* ===== طلب موثوق مع مهلة للخادم النائم ===== */
 async function api(path, method, body) {
-  var isForm = typeof FormData !== 'undefined' && body instanceof FormData;
-  var headers = { 'x-admin-token': localStorage.getItem(KEY) || '' };
-  if (!isForm) headers['Content-Type'] = 'application/json';
-  var res = await fetch(API_URL + path, {
-    method: method || 'GET',
-    headers: headers,
-    body: body ? (isForm ? body : JSON.stringify(body)) : undefined
-  });
+  var isForm = body instanceof FormData;
+  var headers = {};
+  var token = localStorage.getItem(KEY);
+  if (token) headers['x-admin-token'] = token;
+  if (!isForm && body !== undefined) headers['Content-Type'] = 'application/json';
+
+  var res;
+  try {
+    res = await fetch(API + path, {
+      method: method || 'GET',
+      headers: headers,
+      body: body ? (isForm ? body : JSON.stringify(body)) : undefined
+    });
+  } catch (netErr) {
+    throw new Error('تعذر الاتصال بالخادم: ' + netErr.message + ' — تأكد أن Render مستيقظ (يستيقظ خلال دقيقة)');
+  }
+
   if (res.status === 401) {
     localStorage.removeItem(KEY);
     showLogin();
     throw new Error('انتهت الجلسة، سجّل الدخول مجدداً');
   }
-  var data = await res.json().catch(function () { return {}; });
-  if (!res.ok) throw new Error(data.error || 'خطأ في الخادم');
+
+  var data = {};
+  try { data = await res.json(); }
+  catch (e) {
+    var text = await res.text().catch(function () { return ''; });
+    if (res.status === 503) {
+      throw new Error('الخادم نائم على Render (الخطة المجانية). انتظر 30–60 ثانية ثم اضغط الدخول مجدداً.');
+    }
+    throw new Error('رد غير مفهوم من الخادم (' + res.status + '): ' + text.slice(0, 120));
+  }
+
+  if (!res.ok) throw new Error(data.error || 'خطأ في الخادم (' + res.status + ')');
   return data;
 }
 
-/* ===== تسجيل الدخول ===== */
+/* ===== تسجيل الدخول — الدالة الأساسية ===== */
 async function doLogin(e) {
-  e.preventDefault();
-  var username = document.getElementById('adminUser').value.trim();
-  var password = document.getElementById('adminPass').value;
-  var err = document.getElementById('loginErr');
-  err.textContent = '';
-  if (!username || !password) { err.textContent = 'أدخل اسم المستخدم وكلمة المرور'; return; }
+  if (e && e.preventDefault) e.preventDefault();
+
+  var userEl = document.getElementById('adminUser');
+  var passEl = document.getElementById('adminPass');
+  var errEl  = document.getElementById('loginErr');
+  var btnEl  = document.getElementById('loginBtn');
+  var hintEl = document.getElementById('loginHint');
+
+  var username = userEl.value.trim();
+  var password = passEl.value;
+
+  errEl.textContent = '';
+
+  if (!username || !password) {
+    errEl.textContent = 'أدخل اسم المستخدم وكلمة المرور';
+    userEl.focus();
+    return false;
+  }
+
+  btnEl.disabled = true;
+  btnEl.textContent = 'جارٍ تسجيل الدخول...';
+  if (hintEl) hintEl.style.display = 'none';
+
   try {
-    var data = await api('/api/admin/login', 'POST', { username: username, password: password });
+    /* جرّب المسار الجديد أولاً، ثم القديم إذا لم يوجد */
+    var data;
+    try {
+      data = await api('/api/admin/login', 'POST', { username: username, password: password });
+    } catch (firstErr) {
+      if (String(firstErr.message).indexOf('404') !== -1) {
+        data = await api('/api/auth/admin', 'POST', { username: username, password: password });
+      } else {
+        throw firstErr;
+      }
+    }
+
+    if (!data.token) throw new Error('الخادم لم يرجع رمز دخول صحيح');
+
     localStorage.setItem(KEY, data.token);
-    localStorage.setItem('camorro_admin_name', data.username);
+    localStorage.setItem(NAME_KEY, data.username || username);
+
     showPanel();
     loadStats();
     loadUsers();
-  } catch (e2) {
-    err.textContent = e2.message;
+    switchTab('users');
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = 'تسجيل الدخول';
   }
+  return false;
 }
 
-function logout() {
-  localStorage.removeItem(KEY);
-  localStorage.removeItem('camorro_admin_name');
-  location.reload();
-}
-
+/* ===== إظهار اللوحة / شاشة الدخول ===== */
 function showPanel() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('panel').classList.remove('hidden');
-  document.getElementById('adminName').textContent = localStorage.getItem('camorro_admin_name') || 'أدمن';
+  document.getElementById('adminName').textContent = localStorage.getItem(NAME_KEY) || 'أدمن';
 }
 
 function showLogin() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('panel').classList.add('hidden');
+}
+
+function logout() {
+  localStorage.removeItem(KEY);
+  localStorage.removeItem(NAME_KEY);
+  showLogin();
 }
 
 /* ===== الإحصائيات ===== */
@@ -215,14 +287,14 @@ async function loadUsers() {
         ? '<img src="' + assetUrl(u.avatar_url) + '" onerror="this.style.display=\'none\'">'
         : '<span>' + esc(u.username[0].toUpperCase()) + '</span>';
       return '<div class="row">'
-        + '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px;background:#1c1c1c">' + av + '</div>'
+        + '<div class="thumb">' + av + '</div>'
         + '<div class="main"><b>' + esc(u.username) + '</b>' + (u.is_private ? '<span class="tag">🔒 خاص</span>' : '')
         + '<small>' + esc(u.email) + '</small>'
         + '<small>سجل: ' + fmt(u.created_at) + '</small></div>'
         + '<div class="meta">' + u.post_count + ' منشور • ' + u.followers + ' متابع</div>'
         + '<button class="btn ok" onclick="togglePrivate(' + u.id + ',' + (u.is_private ? 'false' : 'true') + ')">' + (u.is_private ? 'جعله عاماً' : 'اجعله خاصاً') + '</button>'
-        + '<button class="btn warn" onclick="resetPass(' + u.id + ',\'' + u.username.replace(/'/g, "\\'") + '\')">🔑 تغيير كلمة السر</button>'
-        + '<button class="btn danger" onclick="delUser(' + u.id + ',\'' + u.username.replace(/'/g, "\\'") + '\')">حذف</button>'
+        + '<button class="btn warn" onclick="resetPass(' + u.id + ')">🔑 كلمة السر</button>'
+        + '<button class="btn danger" onclick="delUser(' + u.id + ')">حذف</button>'
         + '</div>';
     }).join('') : '<p class="empty">لا يوجد مستخدمون</p>';
   } catch (e) {
@@ -237,18 +309,18 @@ async function togglePrivate(id, val) {
   } catch (e) { alert(e.message); }
 }
 
-async function resetPass(id, name) {
-  var np = prompt('كلمة المرور الجديدة للمستخدم "' + name + '" (6 أحرف على الأقل):');
+async function resetPass(id) {
+  var np = prompt('كلمة المرور الجديدة (6 أحرف على الأقل):');
   if (!np) return;
   try {
     await api('/api/admin/users/' + id + '/reset-password', 'POST', { new_password: np });
-    alert('✅ تم تغيير كلمة مرور المستخدم "' + name + '"');
+    alert('✅ تم تغيير كلمة المرور');
     loadUsers(); loadStats();
   } catch (e) { alert(e.message); }
 }
 
-function delUser(id, name) {
-  if (!confirm('حذف المستخدم "' + name + '" نهائياً؟ سيتم حذف كل منشوراته وقصصه وتعليقاته')) return;
+function delUser(id) {
+  if (!confirm('حذف هذا المستخدم نهائياً؟ سيتم حذف كل منشوراته وقصصه وتعليقاته')) return;
   api('/api/admin/users/' + id, 'DELETE').then(function () { loadUsers(); loadStats(); }).catch(function (e) { alert(e.message); });
 }
 
@@ -262,7 +334,7 @@ async function loadPosts() {
         ? (p.media_type === 'video'
           ? '<div class="thumb"><video src="' + assetUrl(p.media_url) + '" muted playsinline preload="metadata"></video></div>'
           : '<img class="thumb" src="' + assetUrl(p.media_url) + '" onerror="this.style.display=\'none\'">')
-        : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px">📝</div>';
+        : '<div class="thumb">📝</div>';
       return '<div class="row">' + media
         + '<div class="main"><b>' + esc(p.username) + '</b>' + (p.is_reel ? '<span class="tag">🎬 ريلز</span>' : '')
         + '<small>' + esc(p.caption || '(بدون وصف)') + '</small>'
@@ -288,7 +360,7 @@ async function loadComments() {
     var comments = await api('/api/admin/comments');
     list.innerHTML = comments.length ? comments.map(function (c) {
       return '<div class="row">'
-        + '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:18px">💬</div>'
+        + '<div class="thumb">💬</div>'
         + '<div class="main"><b>' + esc(c.username) + '</b><small>' + esc(c.body) + '</small><small>' + fmt(c.created_at) + '</small></div>'
         + '<div class="meta">على منشور #' + c.post_id + '</div>'
         + '<button class="btn danger" onclick="delComment(' + c.id + ')">حذف</button>'
@@ -350,29 +422,36 @@ function fmt(d) {
 }
 function assetUrl(u) { return u || ''; }
 
-/* ===== التشغيل ===== */
-document.getElementById('loginBtn').addEventListener('click', doLogin);
+/* ===== ربط الأحداث (ثلاث طرق ضمان) ===== */
+window.doLogin = doLogin; /* 1) الربط المباشر */
+document.getElementById('loginForm').addEventListener('submit', function (e) { e.preventDefault(); doLogin(e); }); /* 2) النموذج */
+document.getElementById('loginBtn').addEventListener('click', function (e) { e.preventDefault(); doLogin(e); }); /* 3) الزر */
+
 document.getElementById('adminPass').addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') doLogin(e);
+  if (e.key === 'Enter') { e.preventDefault(); doLogin(e); }
 });
 
-if (token) {
-  api('/api/admin/stats').then(function () {
-    showPanel();
-    loadStats();
-    loadUsers();
-  }).catch(function () {
-    localStorage.removeItem(KEY);
+/* ===== التشغيل: إذا كان هناك توكن محفوظ → ادخل مباشرة ===== */
+(function init() {
+  var token = localStorage.getItem(KEY);
+  if (token) {
+    api('/api/admin/stats').then(function () {
+      showPanel();
+      loadStats();
+      loadUsers();
+    }).catch(function () {
+      localStorage.removeItem(KEY);
+      showLogin();
+    });
+  } else {
     showLogin();
-  });
-} else {
-  showLogin();
-}
+  }
 
-/* تحديث تلقائي كل 20 ثانية */
-setInterval(function () {
-  if (localStorage.getItem(KEY)) refreshAll();
-}, 20000);
+  /* تحديث تلقائي كل 20 ثانية */
+  setInterval(function () {
+    if (localStorage.getItem(KEY)) refreshAll();
+  }, 20000);
+})();
 </script>
 </body>
 </html>
