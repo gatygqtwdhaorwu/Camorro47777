@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>كامورو — لوحة التحكم</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{background:#0a0a0a;color:#fff;min-height:100vh}
+.hidden{display:none!important}
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-box{width:100%;max-width:360px;background:#131313;border:1px solid #222;border-radius:16px;padding:30px 24px;text-align:center}
+.login-box h1{font-size:22px;margin-bottom:6px;background:linear-gradient(90deg,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-box p{color:#8e9aa8;font-size:13px;margin-bottom:18px}
+.login-box input{width:100%;height:46px;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:10px;padding:0 14px;color:#fff;font-size:14px;outline:none;margin-bottom:12px;text-align:center}
+.login-box input:focus{border-color:#ffb300}
+.login-box button{width:100%;height:46px;border:none;border-radius:23px;background:linear-gradient(90deg,#ffb300,#b78103);color:#000;font-size:15px;font-weight:700;cursor:pointer}
+.err{color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px}
+header{position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #1c1c1c;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;z-index:10}
+header h1{font-size:18px;background:linear-gradient(90deg,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+header button{background:#1c1c1c;border:1px solid #2a2a2a;color:#fff;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;padding:16px 20px}
+.stat{background:#131313;border:1px solid #222;border-radius:12px;padding:14px;text-align:center}
+.stat b{display:block;font-size:24px;color:#ffb300}
+.stat span{font-size:12px;color:#8e9aa8}
+.tabs{display:flex;gap:8px;padding:0 20px 14px;flex-wrap:wrap}
+.tabs button{background:#131313;border:1px solid #2a2a2a;color:#c7d0dc;border-radius:20px;padding:8px 18px;cursor:pointer;font-size:13px}
+.tabs button.active{background:linear-gradient(90deg,#ffb300,#b78103);color:#000;font-weight:700;border-color:transparent}
+.panel{padding:0 20px 40px}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.toolbar input{flex:1;min-width:180px;height:40px;background:#131313;border:1px solid #2a2a2a;border-radius:10px;padding:0 14px;color:#fff;font-size:13px;outline:none}
+.toolbar input:focus{border-color:#ffb300}
+.toolbar button{height:40px;background:#1c1c1c;border:1px solid #2a2a2a;color:#fff;border-radius:10px;padding:0 16px;cursor:pointer;font-size:13px}
+.row{display:flex;align-items:center;gap:12px;background:#131313;border:1px solid #222;border-radius:12px;padding:12px;margin-bottom:8px;flex-wrap:wrap}
+.row .main{flex:1;min-width:200px}
+.row .main b{font-size:14px}
+.row .main small{display:block;color:#8e9aa8;font-size:12px;margin-top:2px;word-break:break-word}
+.row .meta{font-size:12px;color:#8e9aa8;text-align:left}
+.mini{width:44px;height:44px;border-radius:10px;object-fit:cover;background:#1c1c1c;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#ffb300;font-weight:700}
+.mini img,.mini video{width:100%;height:100%;object-fit:cover}
+.thumb{width:60px;height:60px;border-radius:10px;object-fit:cover;background:#1c1c1c;flex-shrink:0;overflow:hidden}
+.thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
+.btn{background:none;border:1px solid #333;color:#c7d0dc;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px}
+.btn.danger{color:#ff6b6b;border-color:#5a2a2a}
+.btn.ok{color:#4cd964;border-color:#2a5a3a}
+.tag{font-size:10px;border-radius:6px;padding:2px 8px;margin-inline-start:6px}
+.tag.priv{color:#ffb300;border:1px solid #ffb300}
+.tag.reel{color:#c084fc;border:1px solid #c084fc}
+.tag.exp{color:#ff6b6b;border:1px solid #ff6b6b}
+.tag.live{color:#4cd964;border:1px solid #4cd964}
+.empty{text-align:center;color:#8e9aa8;font-size:13px;padding:40px 0}
+</style>
+</head>
+<body>
+
+<!-- شاشة الدخول -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>كامورو</h1>
+    <p>لوحة تحكم المدير — أدخل مفتاح الإدارة</p>
+    <div class="err" id="loginErr"></div>
+    <input type="password" id="keyInput" placeholder="مفتاح المدير" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">دخول</button>
+  </div>
+</div>
+
+<!-- لوحة التحكم -->
+<div id="dash" class="hidden">
+  <header>
+    <h1>كامورو — لوحة التحكم</h1>
+    <div style="display:flex;gap:8px">
+      <button onclick="refreshAll()">🔄 تحديث</button>
+      <button onclick="logout()">خروج</button>
+    </div>
+  </header>
+
+  <div class="stats" id="statsEl"></div>
+
+  <div class="tabs">
+    <button id="tab-users" class="active" onclick="switchTab('users')">المستخدمون</button>
+    <button id="tab-posts" onclick="switchTab('posts')">المنشورات</button>
+    <button id="tab-comments" onclick="switchTab('comments')">التعليقات</button>
+    <button id="tab-stories" onclick="switchTab('stories')">القصص</button>
+  </div>
+
+  <div class="panel" id="panel-users">
+    <div class="toolbar">
+      <input id="userSearch" placeholder="ابحث باسم المستخدم أو البريد..." oninput="debounceUsers()">
+    </div>
+    <div id="usersList"><p class="empty">جاري التحميل...</p></div>
+  </div>
+
+  <div class="panel hidden" id="panel-posts"><div id="postsList"><p class="empty">جاري التحميل...</p></div></div>
+  <div class="panel hidden" id="panel-comments"><div id="commentsList"><p class="empty">جاري التحميل...</p></div></div>
+  <div class="panel hidden" id="panel-stories"><div id="storiesList"><p class="empty">جاري التحميل...</p></div></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+let KEY = localStorage.getItem('camorro_admin_key') || '';
+let curTab = 'users';
+const esc = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+const fmt = d => new Date(d).toLocaleString('ar', { dateStyle: 'short', timeStyle: 'short' });
+function assetUrl(u){ return /^https?:/.test(u || '') ? u : (API_URL + u); }
+async function api(path, method, body){
+  const headers = { 'x-admin-key': KEY };
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(API_URL + path, { method: method || 'GET', headers, body: body ? JSON.stringify(body) : undefined });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'خطأ في الطلب');
+  return d;
+}
+function login(){
+  const k = document.getElementById('keyInput').value.trim();
+  if (!k) { document.getElementById('loginErr').textContent = 'أدخل المفتاح'; return; }
+  KEY = k;
+  localStorage.setItem('camorro_admin_key', k);
+  tryApi();
+}
+function logout(){
+  localStorage.removeItem('camorro_admin_key');
+  location.reload();
+}
+function tryApi(){
+  api('/api/admin/stats').then(() => {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('dash').classList.remove('hidden');
+    refreshAll();
+    setInterval(() => { loadStats(); if (curTab === 'users') loadUsers(); }, 20000);
+  }).catch(e => {
+    document.getElementById('loginErr').textContent = e.message;
+    localStorage.removeItem('camorro_admin_key');
+  });
+}
+async function loadStats(){
+  try {
+    const s = await api('/api/admin/stats');
+    document.getElementById('statsEl').innerHTML = [
+      ['👥', s.users, 'مستخدم'], ['📷', s.posts, 'منشور'], ['🎬', s.reels, 'ريلز'],
+      ['⏱️', s.stories, 'قصة'], ['💬', s.comments, 'تعليق'], ['🤝', s.follows, 'متابعة'],
+      ['✉️', s.messages, 'رسالة'], ['🗨️', s.conversations, 'محادثة']
+    ].map(x => '<div class="stat"><b>' + x[1] + '</b><span>' + x[0] + ' ' + x[2] + '</span></div>').join('');
+  } catch (e) {}
+}
+function switchTab(t){
+  curTab = t;
+  ['users','posts','comments','stories'].forEach(n => {
+    document.getElementById('tab-' + n).classList.toggle('active', n === t);
+    document.getElementById('panel-' + n).classList.toggle('hidden', n !== t);
+  });
+  if (t === 'users') loadUsers();
+  if (t === 'posts') loadPosts();
+  if (t === 'comments') loadComments();
+  if (t === 'stories') loadStories();
+}
+let usTimer;
+function debounceUsers(){ clearTimeout(usTimer); usTimer = setTimeout(() => loadUsers(), 300); }
+async function loadUsers(){
+  const list = document.getElementById('usersList');
+  try {
+    const q = document.getElementById('userSearch').value.trim();
+    const users = await api('/api/admin/users?q=' + encodeURIComponent(q));
+    list.innerHTML = users.length ? users.map(u => {
+      return '<div class="row">'
+        + '<div class="mini">' + (u.avatar_url ? '<img src="' + assetUrl(u.avatar_url) + '" onerror="this.style.display=\'none\'">' : '<span>' + esc(u.username[0].toUpperCase()) + '</span>') + '</div>'
+        + '<div class="main"><b>' + esc(u.username) + '</b>' + (u.is_private ? '<span class="tag priv">🔒 خاص</span>' : '')
+        + '<small>' + esc(u.email) + '</small>'
+        + '<small>سجل: ' + fmt(u.created_at) + '</small></div>'
+        + '<div class="meta">' + u.post_count + ' منشور • ' + u.followers + ' متابع</div>'
+        + '<button class="btn ok" onclick="togglePrivate(' + u.id + ',' + (u.is_private ? 'false' : 'true') + ',this)">' + (u.is_private ? 'جعله عاماً' : 'اجعله خاصاً') + '</button>'
+        + '<button class="btn danger" onclick="delUser(' + u.id + ',\'' + u.username + '\')">حذف</button>'
+        + '</div>';
+    }).join('') : '<p class="empty">لا يوجد مستخدمون</p>';
+  } catch (e) { list.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
+}
+async function togglePrivate(id, val, btn){
+  try { await api('/api/admin/users/' + id + '/private', 'PATCH', { is_private: val }); loadUsers(); loadStats(); }
+  catch (e) { alert(e.message); }
+}
+function delUser(id, name){
+  if (!confirm('حذف المستخدم "' + name + '" نهائياً؟ سيتم حذف كل منشوراته وقصصه وتعليقاته')) return;
+  api('/api/admin/users/' + id, 'DELETE').then(() => { loadUsers(); loadStats(); }).catch(e => alert(e.message));
+}
+async function loadPosts(){
+  const list = document.getElementById('postsList');
+  try {
+    const posts = await api('/api/admin/posts');
+    list.innerHTML = posts.length ? posts.map(p => {
+      const media = p.media_url
+        ? (p.media_type === 'video'
+          ? '<div class="thumb"><video src="' + assetUrl(p.media_url) + '" muted playsinline preload="metadata"></video></div>'
+          : '<img class="thumb" src="' + assetUrl(p.media_url) + '" onerror="this.style.display=\'none\'">')
+        : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px">📝</div>';
+      return '<div class="row">' + media
+        + '<div class="main"><b>' + esc(p.username) + '</b>' + (p.is_reel ? '<span class="tag reel">🎬 ريلز</span>' : '')
+        + '<small>' + esc(p.caption || '(بدون وصف)') + '</small>'
+        + '<small>' + fmt(p.created_at) + '</small></div>'
+        + '<div class="meta">' + p.likes + ' ❤️ • ' + p.comments + ' 💬</div>'
+        + '<button class="btn danger" onclick="delPost(' + p.id + ')">حذف</button>'
+        + '</div>';
+    }).join('') : '<p class="empty">لا توجد منشورات</p>';
+  } catch (e) { list.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
+}
+function delPost(id){
+  if (!confirm('حذف هذا المنشور نهائياً؟')) return;
+  api('/api/admin/posts/' + id, 'DELETE').then(() => { loadPosts(); loadStats(); }).catch(e => alert(e.message));
+}
+async function loadComments(){
+  const list = document.getElementById('commentsList');
+  try {
+    const comments = await api('/api/admin/comments');
+    list.innerHTML = comments.length ? comments.map(c => {
+      return '<div class="row">'
+        + '<div class="mini" style="font-size:18px">💬</div>'
+        + '<div class="main"><b>' + esc(c.username) + '</b><small>' + esc(c.body) + '</small><small>' + fmt(c.created_at) + '</small></div>'
+        + '<div class="meta">على منشور #' + c.post_id + '</div>'
+        + '<button class="btn danger" onclick="delComment(' + c.id + ')">حذف</button>'
+        + '</div>';
+    }).join('') : '<p class="empty">لا توجد تعليقات</p>';
+  } catch (e) { list.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
+}
+function delComment(id){
+  if (!confirm('حذف هذا التعليق؟')) return;
+  api('/api/admin/comments/' + id, 'DELETE').then(() => { loadComments(); loadStats(); }).catch(e => alert(e.message));
+}
+async function loadStories(){
+  const list = document.getElementById('storiesList');
+  try {
+    const stories = await api('/api/admin/stories');
+    list.innerHTML = stories.length ? stories.map(s => {
+      const media = s.media_type === 'video'
+        ? '<div class="thumb"><video src="' + assetUrl(s.media_url) + '" muted playsinline preload="metadata"></video></div>'
+        : '<img class="thumb" src="' + assetUrl(s.media_url) + '" onerror="this.style.display=\'none\'">';
+      return '<div class="row">' + media
+        + '<div class="main"><b>' + esc(s.username) + '</b>' + '<span class="tag ' + (s.expired ? 'exp' : 'live') + '">' + (s.expired ? '⏰ منتهية' : '🟢 نشطة') + '</span>'
+        + '<small>' + fmt(s.created_at) + '</small></div>'
+        + '<div class="meta">' + (s.expired ? 'انتهت صلاحيتها' : 'تنتهي خلال 24 ساعة') + '</div>'
+        + '<button class="btn danger" onclick="delStory(' + s.id + ')">حذف</button>'
+        + '</div>';
+    }).join('') : '<p class="empty">لا توجد قصص</p>';
+  } catch (e) { list.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
+}
+function delStory(id){
+  if (!confirm('حذف هذه القصة؟')) return;
+  api('/api/admin/stories/' + id, 'DELETE').then(() => { loadStories(); loadStats(); }).catch(e => alert(e.message));
+}
+function refreshAll(){
+  loadStats();
+  if (curTab === 'users') loadUsers();
+  if (curTab === 'posts') loadPosts();
+  if (curTab === 'comments') loadComments();
+  if (curTab === 'stories') loadStories();
+}
+if (KEY) { tryApi(); }
+</script>
+</body>
+  </html>
