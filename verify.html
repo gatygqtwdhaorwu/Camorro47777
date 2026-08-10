@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>تأكيد البريد — كامورو</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,Cantarell,sans-serif;-webkit-tap-highlight-color:transparent;}
+body{background:#0f1c2e;color:white;height:100vh;height:-webkit-fill-available;display:flex;justify-content:center;align-items:center;overflow:hidden;}
+.container{display:flex;width:100%;max-width:414px;height:100%;padding:30px 24px calc(20px + env(safe-area-inset-bottom)) 24px;flex-direction:column;align-items:center;justify-content:space-between;}
+.main-content{width:100%;display:flex;flex-direction:column;align-items:center;margin-top:20px;}
+.logo{margin-bottom:24px;}
+.logo svg{width:80px;height:80px;box-shadow:0 10px 25px rgba(0,0,0,.3);border-radius:24px;}
+h1{font-size:22px;margin-bottom:10px;background:linear-gradient(45deg,#ffe082,#ffb300,#b78103);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;}
+.sub{color:#8e9aa8;font-size:14px;text-align:center;line-height:1.6;margin-bottom:28px;max-width:320px;}
+.sub b{color:#ffb300;word-break:break-all;}
+.otp-row{display:flex;gap:10px;direction:ltr;justify-content:center;margin-bottom:22px;width:100%;}
+.otp-row input{width:48px;height:56px;border:1.5px solid #22354f;border-radius:14px;background:#16263d;color:#fff;font-size:22px;font-weight:700;text-align:center;outline:none;transition:.2s;}
+.otp-row input:focus{border-color:#ffb300;box-shadow:0 0 0 3px rgba(255,179,0,.15);}
+.login-btn{width:100%;height:54px;border:none;border-radius:27px;background:linear-gradient(90deg,#ffb300,#b78103);color:#0f1c2e;font-size:16px;font-weight:bold;cursor:pointer;margin-top:6px;box-shadow:0 4px 15px rgba(255,179,0,.2);}
+.login-btn:disabled{opacity:.55;cursor:wait;}
+.resend-btn{width:100%;height:48px;border:1.5px solid #ffb300;border-radius:24px;background:transparent;color:#ffb300;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px;}
+.resend-btn:disabled{opacity:.45;cursor:not-allowed;border-color:#5c6b7a;color:#5c6b7a;}
+.back-btn{width:100%;height:48px;border:none;border-radius:24px;background:transparent;color:#8e9aa8;font-size:14px;font-weight:500;cursor:pointer;margin-top:10px;}
+.error-msg{color:#ff5252;font-size:13px;display:none;margin-bottom:12px;text-align:center;min-height:18px;}
+.ok-msg{color:#69f0ae;font-size:13px;display:none;margin-bottom:12px;text-align:center;}
+.bottom{width:100%;text-align:center;}
+.meta{margin-top:12px;font-size:13px;color:#8e9aa8;}
+.loading-screen{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f1c2e;z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:15px;}
+.loading-screen .spinner{width:42px;height:42px;border:4px solid #16263d;border-top-color:#ffb300;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-screen p{font-size:15px;color:#8e9aa8;}
+.hint{color:#5c6b7a;font-size:12px;text-align:center;margin-top:8px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute;top:-9999px;left:-9999px;" aria-hidden="true">
+  <defs>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="30%" stop-color="#FFD54F"/>
+      <stop offset="70%" stop-color="#FFB300"/>
+      <stop offset="100%" stop-color="#B78103"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <p id="loadingText">جاري التحقق...</p>
+</div>
+
+<div class="container">
+  <div class="main-content">
+    <div class="logo">
+      <svg viewBox="0 0 100 100" fill="none">
+        <rect width="100" height="100" rx="28" fill="#16263d"/>
+        <circle cx="50" cy="50" r="34" stroke="url(#goldGrad)" stroke-width="3" fill="none" stroke-dasharray="14 6"/>
+        <path d="M30 66 V34 L50 52 L70 34 V66" stroke="url(#goldGrad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <h1>تأكيد البريد الإلكتروني</h1>
+    <p class="sub">أدخل الرمز المكوّن من 6 أرقام المرسل إلى<br><b id="emailLabel">—</b></p>
+
+    <div class="otp-row" id="otpRow">
+      <input type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="رقم 1">
+      <input type="text" inputmode="numeric" maxlength="1" aria-label="رقم 2">
+      <input type="text" inputmode="numeric" maxlength="1" aria-label="رقم 3">
+      <input type="text" inputmode="numeric" maxlength="1" aria-label="رقم 4">
+      <input type="text" inputmode="numeric" maxlength="1" aria-label="رقم 5">
+      <input type="text" inputmode="numeric" maxlength="1" aria-label="رقم 6">
+    </div>
+
+    <div class="error-msg" id="errMsg"></div>
+    <div class="ok-msg" id="okMsg"></div>
+
+    <button class="login-btn" id="verifyBtn">تأكيد الرمز</button>
+    <button class="resend-btn" id="resendBtn" disabled>إعادة الإرسال (60)</button>
+    <p class="hint">الرمز صالح لمدة 10 دقائق. تحقق من مجلد الرسائل غير المرغوب فيها (Spam) إذا لم يصلك.</p>
+  </div>
+
+  <div class="bottom">
+    <button class="back-btn" id="backBtn">← الرجوع لتسجيل الدخول</button>
+    <div class="meta">Camorro App v1.0</div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  /* إذا كان مسجلاً مسبقاً → ادخل مباشرة */
+  if (localStorage.getItem('camorro_token')) {
+    window.location.href = 'home.html';
+    return;
+  }
+
+  var params = new URLSearchParams(window.location.search);
+  var email = (params.get('email') || '').trim().toLowerCase();
+
+  if (!email) {
+    window.location.href = 'index.html';
+    return;
+  }
+
+  var emailLabel   = document.getElementById('emailLabel');
+  var otpInputs    = Array.prototype.slice.call(document.querySelectorAll('#otpRow input'));
+  var verifyBtn    = document.getElementById('verifyBtn');
+  var resendBtn    = document.getElementById('resendBtn');
+  var backBtn      = document.getElementById('backBtn');
+  var errMsg       = document.getElementById('errMsg');
+  var okMsg        = document.getElementById('okMsg');
+  var loadingScreen= document.getElementById('loadingScreen');
+  var loadingText  = document.getElementById('loadingText');
+  var cooldownLeft = 60;
+  var cooldownTimer= null;
+
+  emailLabel.textContent = email;
+  otpInputs[0].focus();
+
+  function showErr(t) {
+    okMsg.style.display = 'none';
+    errMsg.textContent = t;
+    errMsg.style.display = 'block';
+  }
+  function showOk(t) {
+    errMsg.style.display = 'none';
+    okMsg.textContent = t;
+    okMsg.style.display = 'block';
+  }
+  function hideMsgs() {
+    errMsg.style.display = 'none';
+    okMsg.style.display = 'none';
+  }
+  function getCode() {
+    return otpInputs.map(function (i) { return i.value; }).join('');
+  }
+  function setBusy(busy, text) {
+    loadingScreen.style.display = busy ? 'flex' : 'none';
+    if (text) loadingText.textContent = text;
+    verifyBtn.disabled = busy;
+  }
+
+  /* ===== حقول OTP: تنقل تلقائي + لصق ===== */
+  otpInputs.forEach(function (input, idx) {
+    input.addEventListener('input', function () {
+      var v = input.value.replace(/\D/g, '');
+      input.value = v.slice(0, 1);
+      if (v && idx < otpInputs.length - 1) otpInputs[idx + 1].focus();
+      if (getCode().length === 6) verifyBtn.click();
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Backspace' && !input.value && idx > 0) {
+        otpInputs[idx - 1].focus();
+      }
+      if (e.key === 'Enter') verifyBtn.click();
+    });
+
+    input.addEventListener('paste', function (e) {
+      e.preventDefault();
+      var text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      var digits = text.replace(/\D/g, '').slice(0, 6).split('');
+      digits.forEach(function (d, i) {
+        if (otpInputs[i]) otpInputs[i].value = d;
+      });
+      if (digits.length === 6) verifyBtn.click();
+      else if (digits.length > 0) otpInputs[Math.min(digits.length, 5)].focus();
+    });
+  });
+
+  /* ===== عدّاد إعادة الإرسال ===== */
+  function startCooldown(sec) {
+    cooldownLeft = sec || 60;
+    resendBtn.disabled = true;
+    resendBtn.textContent = 'إعادة الإرسال (' + cooldownLeft + ')';
+    clearInterval(cooldownTimer);
+    cooldownTimer = setInterval(function () {
+      cooldownLeft--;
+      if (cooldownLeft <= 0) {
+        clearInterval(cooldownTimer);
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'إعادة إرسال الرمز';
+      } else {
+        resendBtn.textContent = 'إعادة الإرسال (' + cooldownLeft + ')';
+      }
+    }, 1000);
+  }
+  startCooldown(60);
+
+  /* ===== طلب للسيرفر مع انتظار كافٍ (Render cold start) ===== */
+  async function apiPost(path, body) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 60000);
+    try {
+      var res = await fetch(API_URL + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      var data = {};
+      try { data = await res.json(); } catch (e) {}
+      if (!res.ok) throw new Error(data.error || 'حدث خطأ في الخادم');
+      return data;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError' || err instanceof TypeError) {
+        throw new Error('الخادم يشتغل الآن... انتظر دقيقة وحاول مرة أخرى.');
+      }
+      throw err;
+    }
+  }
+
+  /* ===== تأكيد الرمز ===== */
+  verifyBtn.addEventListener('click', async function () {
+    hideMsgs();
+    var code = getCode();
+    if (code.length !== 6) {
+      showErr('أدخل الرمز المكوّن من 6 أرقام.');
+      return;
+    }
+
+    setBusy(true, 'جاري التحقق...');
+    try {
+      var data = await apiPost('/api/otp/verify', { email: email, code: code });
+      if (data.token) {
+        localStorage.setItem('camorro_token', data.token);
+        window.location.href = 'home.html';
+        return;
+      }
+      throw new Error('لم يتم استلام التوكن');
+    } catch (err) {
+      setBusy(false);
+      showErr(err.message);
+      otpInputs.forEach(function (i) { i.value = ''; });
+      otpInputs[0].focus();
+    }
+  });
+
+  /* ===== إعادة الإرسال ===== */
+  resendBtn.addEventListener('click', async function () {
+    if (resendBtn.disabled) return;
+    hideMsgs();
+    setBusy(true, 'جاري إرسال الرمز...');
+    try {
+      await apiPost('/api/otp/send', { email: email });
+      setBusy(false);
+      showOk('تم إرسال رمز جديد إلى بريدك.');
+      startCooldown(60);
+      otpInputs.forEach(function (i) { i.value = ''; });
+      otpInputs[0].focus();
+    } catch (err) {
+      setBusy(false);
+      showErr(err.message);
+    }
+  });
+
+  backBtn.addEventListener('click', function () {
+    window.location.href = 'index.html';
+  });
+})();
+</script>
+</body>
+</html>
