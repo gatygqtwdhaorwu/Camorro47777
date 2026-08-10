@@ -50,8 +50,12 @@ const ADMIN_SECRET = (process.env.ADMIN_SECRET || JWT_SECRET) + ':admin';
 const ADMIN_TTL = 60 * 60; // جلسة الأدمن: ساعة واحدة
 
 /* ============================================================
-   3) Cloudinary
+   3) Cloudinary — إجباري
    ============================================================ */
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  console.error('[FATAL] عيّن بيانات Cloudinary في متغيرات البيئة');
+  process.exit(1);
+}
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -84,11 +88,11 @@ app.use(cors({ origin: ALLOWED_ORIGIN }));
 /* ============================================================
    6) Rate limiting
    ============================================================ */
-const apiLimiter    = rateLimit({ windowMs: 60 * 1000,        limit: 120, standardHeaders: 'draft-7', legacyHeaders: false });
-const loginLimiter  = rateLimit({ windowMs: 15 * 60 * 1000,   limit: 5,   standardHeaders: 'draft-7', legacyHeaders: false });
-const regLimiter    = rateLimit({ windowMs: 60 * 60 * 1000,   limit: 10,  standardHeaders: 'draft-7', legacyHeaders: false });
-const otpLimiter    = rateLimit({ windowMs: 15 * 60 * 1000,   limit: 5,   standardHeaders: 'draft-7', legacyHeaders: false });
-const adminLimiter  = rateLimit({ windowMs: 15 * 60 * 1000,   limit: 10,  standardHeaders: 'draft-7', legacyHeaders: false });
+const apiLimiter   = rateLimit({ windowMs: 60 * 1000,      limit: 120, standardHeaders: 'draft-7', legacyHeaders: false });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5,   standardHeaders: 'draft-7', legacyHeaders: false });
+const regLimiter   = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10,  standardHeaders: 'draft-7', legacyHeaders: false });
+const otpLimiter   = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5,   standardHeaders: 'draft-7', legacyHeaders: false });
+const adminLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10,  standardHeaders: 'draft-7', legacyHeaders: false });
 app.use('/api/', apiLimiter);
 
 /* ============================================================
@@ -113,13 +117,7 @@ function signToken(u) {
 function signAdminToken(username) {
   return jwt.sign({ username, role: 'admin' }, ADMIN_SECRET, { expiresIn: ADMIN_TTL });
 }
-function safeEqual(a, b) {
-  const ha = crypto.createHash('sha256').update(String(a)).digest();
-  const hb = crypto.createHash('sha256').update(String(b)).digest();
-  return crypto.timingSafeEqual(ha, hb);
-}
 
-/* ---------- مصادقة المستخدمين ---------- */
 function auth(req, res, next) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : '';
@@ -132,7 +130,6 @@ function auth(req, res, next) {
   } catch (e) { res.status(401).json({ error: 'جلسة غير صالحة' }); }
 }
 
-/* ---------- مصادقة الأدمن ---------- */
 function adminAuth(req, res, next) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : '';
@@ -145,7 +142,6 @@ function adminAuth(req, res, next) {
   } catch (e) { res.status(401).json({ error: 'جلسة أدمن غير صالحة' }); }
 }
 
-/* ---------- رفع إلى Cloudinary ---------- */
 function uploadToCloudinary(buffer, mime) {
   return new Promise((resolve, reject) => {
     const resourceType = mime.startsWith('video/') ? 'video' : 'image';
@@ -160,7 +156,6 @@ function uploadToCloudinary(buffer, mime) {
   });
 }
 
-/* ---------- إشعارات ---------- */
 async function notify(userId, actorId, type, postId) {
   if (!userId || userId === actorId) return;
   try {
@@ -171,7 +166,6 @@ async function notify(userId, actorId, type, postId) {
   } catch (e) {}
 }
 
-/* ---------- سجل الأدمن ---------- */
 async function logAdmin(adminName, action, targetType, targetId, details) {
   try {
     await pool.query(
@@ -181,7 +175,6 @@ async function logAdmin(adminName, action, targetType, targetId, details) {
   } catch (e) {}
 }
 
-/* ---------- إرسال رمز OTP (Resend اختياري + سجل للاختبار) ---------- */
 async function sendOtpEmail(email, code) {
   const key = process.env.RESEND_API_KEY;
   if (key) {
@@ -211,8 +204,30 @@ async function generateOtp(email) {
   await sendOtpEmail(email, code);
 }
 
+async function findOrCreateConv(u1, u2) {
+  const a = Math.min(u1, u2), b = Math.max(u1, u2);
+  let r = await pool.query('SELECT id FROM conversations WHERE user1_id=$1 AND user2_id=$2', [a, b]);
+  if (r.rowCount > 0) return r.rows[0].id;
+  r = await pool.query('INSERT INTO conversations (user1_id, user2_id) VALUES ($1,$2) RETURNING id', [a, b]);
+  return r.rows[0].id;
+}
+
+async function ensureAdminSystemUser() {
+  const UN = 'camorro_system';
+  let r = await pool.query('SELECT id FROM users WHERE username=$1', [UN]);
+  if (r.rowCount > 0) return r.rows[0].id;
+  const hash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+  r = await pool.query(
+    'INSERT INTO users (username, email, password_hash, email_verified) VALUES ($1,$2,$3,TRUE) ON CONFLICT (username) DO NOTHING RETURNING id',
+    [UN, 'system@camorro.local', hash]
+  );
+  if (r.rowCount > 0) return r.rows[0].id;
+  r = await pool.query('SELECT id FROM users WHERE username=$1', [UN]);
+  return r.rows[0].id;
+}
+
 /* ============================================================
-   9) إنشاء الجداول تلقائياً (آمن — لا يؤثر على البيانات الموجودة)
+   9) إنشاء الجداول تلقائياً (آمن حتى للقواعد الموجودة)
    ============================================================ */
 async function initDb() {
   await pool.query(`
@@ -324,6 +339,11 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_otp_email ON otp_codes(email);
   `);
+
+  /* دعم القواعد القديمة: زيد العمود إن كان ناقصاً + فعّل القدامى */
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN');
+  await pool.query('UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL');
+  await pool.query('ALTER TABLE users ALTER COLUMN email_verified SET DEFAULT FALSE');
   console.log('[Camorro] تم التأكد من جداول قاعدة البيانات');
 }
 
@@ -715,10 +735,9 @@ app.delete('/api/stories/:id', auth, async (req, res) => {
 
 app.post('/api/stories/:id/view', auth, async (req, res) => {
   try {
-    const sid = Number(req.params.id);
     await pool.query(
       'INSERT INTO story_views (story_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
-      [sid, req.userId]
+      [Number(req.params.id), req.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -884,3 +903,386 @@ app.post('/api/notifications/read', auth, async (req, res) => {
     res.status(500).json({ error: 'خطأ في الخادم' });
   }
 });
+
+/* ============================================================
+   17) المحادثات والرسائل
+   ============================================================ */
+app.get('/api/conversations', auth, async (req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT c.id, u.id AS other_id, u.username AS other_name, u.avatar_url AS other_avatar,
+              (SELECT body FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS last_body,
+              (SELECT media_url FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS last_media,
+              (SELECT created_at FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS last_at,
+              (SELECT COUNT(*)::int FROM messages m WHERE m.conversation_id=c.id AND m.sender_id<>$1 AND m.read=FALSE) AS unread
+         FROM conversations c
+         JOIN users u ON u.id = CASE WHEN c.user1_id=$1 THEN c.user2_id ELSE c.user1_id END
+        WHERE c.user1_id=$1 OR c.user2_id=$1
+        ORDER BY last_at DESC NULLS LAST`,
+      [req.userId]
+    )).rows;
+    res.json(rows.map(c => ({
+      id: c.id, other_id: c.other_id, other_name: c.other_name,
+      other_avatar: c.other_avatar || '', last_body: c.last_body || '',
+      last_media: !!c.last_media, last_at: c.last_at, unread: c.unread
+    })));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/conversations', auth, async (req, res) => {
+  try {
+    const targetId = Number(req.body.user_id);
+    if (!targetId || targetId === req.userId) return res.status(400).json({ error: 'مستلم غير صالح' });
+    const t = await pool.query('SELECT id FROM users WHERE id=$1', [targetId]);
+    if (t.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    const convId = await findOrCreateConv(req.userId, targetId);
+    res.json({ conversation_id: convId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/conversations/:id/messages', auth, async (req, res) => {
+  try {
+    const convId = Number(req.params.id);
+    const conv = await pool.query(
+      'SELECT id FROM conversations WHERE id=$1 AND (user1_id=$2 OR user2_id=$2)',
+      [convId, req.userId]
+    );
+    if (conv.rowCount === 0) return res.status(403).json({ error: 'لا يمكنك الوصول لهذه المحادثة' });
+
+    await pool.query(
+      'UPDATE messages SET read=TRUE WHERE conversation_id=$1 AND sender_id<>$2 AND read=FALSE',
+      [convId, req.userId]
+    );
+
+    const rows = (await pool.query(
+      `SELECT m.id, m.sender_id, m.body, m.media_url, m.created_at, u.username AS sender_username
+         FROM messages m JOIN users u ON u.id=m.sender_id
+        WHERE m.conversation_id=$1 ORDER BY m.id ASC`,
+      [convId]
+    )).rows;
+    res.json({ messages: rows.map(m => ({
+      id: m.id, sender_id: m.sender_id, sender_username: m.sender_username,
+      body: m.body || '', media_url: m.media_url || '', created_at: m.created_at
+    })) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/conversations/:id/messages', auth, async (req, res) => {
+  try {
+    const convId = Number(req.params.id);
+    const body = String(req.body.body || '').trim().slice(0, 1000);
+    if (!body) return res.status(400).json({ error: 'اكتب رسالة' });
+    const conv = await pool.query(
+      'SELECT id FROM conversations WHERE id=$1 AND (user1_id=$2 OR user2_id=$2)',
+      [convId, req.userId]
+    );
+    if (conv.rowCount === 0) return res.status(403).json({ error: 'لا يمكنك الوصول لهذه المحادثة' });
+
+    await pool.query(
+      'INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1,$2,$3)',
+      [convId, req.userId, body]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/conversations/:id/messages/media', auth, upload.single('media'), async (req, res) => {
+  try {
+    const convId = Number(req.params.id);
+    if (!req.file) return res.status(400).json({ error: 'أرفق ملفاً' });
+    const conv = await pool.query(
+      'SELECT id FROM conversations WHERE id=$1 AND (user1_id=$2 OR user2_id=$2)',
+      [convId, req.userId]
+    );
+    if (conv.rowCount === 0) return res.status(403).json({ error: 'لا يمكنك الوصول لهذه المحادثة' });
+
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    await pool.query(
+      'INSERT INTO messages (conversation_id, sender_id, media_url) VALUES ($1,$2,$3)',
+      [convId, req.userId, url]
+    );
+    res.json({ ok: true, media_url: url });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/messages/unread-total', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM messages m
+        WHERE m.read=FALSE AND m.sender_id<>$1 AND m.conversation_id IN
+          (SELECT id FROM conversations WHERE user1_id=$1 OR user2_id=$1)`,
+      [req.userId]
+    );
+    res.json({ count: r.rows[0].count });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+/* ============================================================
+   18) لوحة تحكم الأدمن
+   ============================================================ */
+app.post('/api/admin/login', adminLimiter, async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim();
+    const password = String(req.body.password || '');
+    const admin = ADMINS.find(a => a.username === username);
+    if (!admin || password !== admin.password) {
+      return res.status(401).json({ error: 'بيانات أدمن غير صحيحة' });
+    }
+    await logAdmin(username, 'admin_login', 'system', null, '');
+    res.json({ token: signAdminToken(username) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/stats', adminAuth, async (req, res) => {
+  try {
+    const q = async (sql) => (await pool.query(sql)).rows[0].count;
+    res.json({
+      users: await q('SELECT COUNT(*)::int AS count FROM users'),
+      posts: await q('SELECT COUNT(*)::int AS count FROM posts'),
+      comments: await q('SELECT COUNT(*)::int AS count FROM comments'),
+      stories: await q('SELECT COUNT(*)::int AS count FROM stories'),
+      conversations: await q('SELECT COUNT(*)::int AS count FROM conversations'),
+      messages: await q('SELECT COUNT(*)::int AS count FROM messages')
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/users', adminAuth, async (req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT u.id, u.username, u.email, u.email_verified, u.created_at,
+              (SELECT COUNT(*)::int FROM posts p WHERE p.user_id=u.id) AS posts_count,
+              (SELECT COUNT(*)::int FROM follows f WHERE f.followee_id=u.id AND f.status='accepted') AS followers_count,
+              (SELECT COUNT(*)::int FROM follows f WHERE f.follower_id=u.id AND f.status='accepted') AS following_count
+         FROM users u ORDER BY u.id DESC LIMIT 200`
+    )).rows;
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/posts', adminAuth, async (req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT p.id, p.user_id, p.media_url, p.media_type, p.caption, p.is_reel, p.hidden, p.created_at,
+              u.username,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id=p.id) AS likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id=p.id) AS comments_count
+         FROM posts p JOIN users u ON u.id=p.user_id
+        ORDER BY p.id DESC LIMIT 200`
+    )).rows;
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.patch('/api/admin/posts/:id', adminAuth, async (req, res) => {
+  try {
+    const pid = Number(req.params.id);
+    const hidden = !!(req.body && req.body.hidden);
+    const r = await pool.query('UPDATE posts SET hidden=$1 WHERE id=$2', [hidden, pid]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'المنشور غير موجود' });
+    await logAdmin(req.adminName, hidden ? 'hide_post' : 'show_post', 'post', pid, '');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.delete('/api/admin/posts/:id', adminAuth, async (req, res) => {
+  try {
+    const pid = Number(req.params.id);
+    await pool.query('DELETE FROM posts WHERE id=$1', [pid]);
+    await logAdmin(req.adminName, 'delete_post', 'post', pid, '');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/comments', adminAuth, async (req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT c.id, c.post_id, c.body, c.created_at, u.username
+         FROM comments c JOIN users u ON u.id=c.user_id
+        ORDER BY c.id DESC LIMIT 300`
+    )).rows;
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.delete('/api/admin/comments/:id', adminAuth, async (req, res) => {
+  try {
+    const cid = Number(req.params.id);
+    await pool.query('DELETE FROM comments WHERE id=$1', [cid]);
+    await logAdmin(req.adminName, 'delete_comment', 'comment', cid, '');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/stories', adminAuth, async (req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT s.id, s.user_id, s.media_url, s.media_type, s.created_at, u.username,
+              (s.created_at < now() - interval '24 hours') AS expired
+         FROM stories s JOIN users u ON u.id=s.user_id
+        ORDER BY s.id DESC LIMIT 200`
+    )).rows;
+    res.json(rows.map(s => ({
+      id: s.id, user_id: s.user_id, username: s.username, media_url: s.media_url || '',
+      media_type: s.media_type || 'image', created_at: s.created_at, expired: s.expired
+    })));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.delete('/api/admin/stories/:id', adminAuth, async (req, res) => {
+  try {
+    const sid = Number(req.params.id);
+    await pool.query('DELETE FROM stories WHERE id=$1', [sid]);
+    await logAdmin(req.adminName, 'delete_story', 'story', sid, '');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/users/:id/chat', adminAuth, async (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    const sysId = await ensureAdminSystemUser();
+    const convId = await findOrCreateConv(sysId, targetId);
+    const msgs = (await pool.query(
+      'SELECT id, sender_id, body, media_url, created_at FROM messages WHERE conversation_id=$1 ORDER BY id ASC',
+      [convId]
+    )).rows;
+    res.json({
+      conversation_id: convId,
+      messages: msgs.map(m => ({
+        id: m.id, body: m.body || '', media_url: m.media_url || '',
+        is_mine: m.sender_id === sysId, created_at: m.created_at
+      }))
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/admin/message', adminAuth, async (req, res) => {
+  try {
+    const targetId = Number(req.body.user_id);
+    const body = String(req.body.body || '').trim();
+    if (!targetId || !body) return res.status(400).json({ error: 'بيانات ناقصة' });
+    const sysId = await ensureAdminSystemUser();
+    if (targetId === sysId) return res.status(400).json({ error: 'لا يمكن مراسلة حساب النظام' });
+    const convId = await findOrCreateConv(sysId, targetId);
+    await pool.query('INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1,$2,$3)', [convId, sysId, body]);
+    await logAdmin(req.adminName, 'admin_message', 'user', targetId, body.slice(0, 60) + (body.length > 60 ? '...' : ''));
+    res.json({ ok: true, conversation_id: convId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/conversations/:id/messages', adminAuth, async (req, res) => {
+  try {
+    const convId = Number(req.params.id);
+    const msgs = (await pool.query(
+      `SELECT m.id, m.sender_id, m.body, m.media_url, m.created_at, u.username AS sender_username
+         FROM messages m JOIN users u ON u.id=m.sender_id
+        WHERE m.conversation_id=$1 ORDER BY m.id ASC`,
+      [convId]
+    )).rows;
+    res.json({ messages: msgs.map(m => ({
+      id: m.id, sender_username: m.sender_username, body: m.body || '',
+      media_url: m.media_url || '', created_at: m.created_at
+    })) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/admin/logs', adminAuth, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    res.json((await pool.query('SELECT * FROM admin_logs ORDER BY id DESC LIMIT $1', [limit])).rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+/* ============================================================
+   19) فحص الصحة + معالج الأخطاء + التشغيل
+   ============================================================ */
+app.get('/health', (req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
+app.get('/', (req, res) => {
+  res.json({ ok: true, service: 'Camorro API', status: 'running' });
+});
+
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'حجم الملف يتجاوز 15MB' });
+    return res.status(400).json({ error: 'خطأ في رفع الملف' });
+  }
+  if (err && err.message === 'نوع الملف غير مسموح') return res.status(400).json({ error: 'نوع الملف غير مسموح' });
+  console.error(err);
+  res.status(500).json({ error: 'خطأ في الخادم' });
+});
+
+async function start() {
+  try {
+    await initDb();
+    app.listen(PORT, () => {
+      console.log('[Camorro] الخادم يعمل على المنفذ ' + PORT);
+    });
+  } catch (e) {
+    console.error('[FATAL] تعذر الاتصال بقاعدة البيانات:', e.message);
+    process.exit(1);
+  }
+}
+start();
