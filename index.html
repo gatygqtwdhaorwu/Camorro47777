@@ -88,7 +88,7 @@ body{background:#0f1c2e;color:white;height:100vh;height:-webkit-fill-available;d
 <script src="config.js"></script>
 <script>
 (function () {
-  // إذا كان المستخدم مسجلاً بالفعل → ادخله مباشرة
+  /* إذا كان المستخدم مسجلاً بالفعل → ادخله مباشرة */
   if (localStorage.getItem('camorro_token')) {
     window.location.href = 'home.html';
     return;
@@ -127,6 +127,12 @@ body{background:#0f1c2e;color:white;height:100vh;height:-webkit-fill-available;d
       });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'حدث خطأ');
+
+      /* ===== إضافة كامورو: توجيه للتحقق إذا كان البريد غير مفعّل ===== */
+      if (data.needs_verification) {
+        window.location.href = 'verify.html?email=' + encodeURIComponent(data.email || identifier);
+        return;
+      }
 
       localStorage.setItem('camorro_token', data.token);
       window.location.href = 'home.html';
