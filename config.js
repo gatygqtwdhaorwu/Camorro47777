@@ -1,11 +1,9 @@
 /* ============================================================
-   إعدادات كامورو — ضع رابط سيرفر Render هنا بعد نشره
+   إعدادات كامورو — بعد الترحيل إلى Supabase
    ============================================================ */
 
-// رابط الخادم (بدون / في النهاية)
-// مثال: https://camorro-api.onrender.com
-const API_URL = 'https://camorro47777-1.onrender.com';
+// عنوان الدالة Edge Function (بدون / في النهاية)
+const API_URL = 'https://jzvmvjgkbwziwbnrfgwn.supabase.co/functions/v1/api';
 
-// رابط موقعك على GitHub Pages (اختياري - للعرض فقط)
-// مثال: https://YOUR_USERNAME.github.io/camorro-frontend/
+// موقع الواجهة على GitHub Pages (اختياري - للعرض فقط)
 const SITE_URL = 'https://gatygqtwdhaorwu.github.io/Camorro47777/';
