@@ -1,961 +1,886 @@
 /* ============================================================
-   كامورو — الخادم الكامل v3.0 (معدّل)
-   ============================================================
-   حساب:    تسجيل / دخول / JWT / bcrypt
-   محتوى:   منشورات، ريلز، ستوري، إعجابات، تعليقات
-   اجتماعي: متابعة خاص/عام، طلبات متابعة، إشعارات
-   رسائل:   محادثات مباشرة (نص + وسائط)
-   إدارة:   لوحة تحكم أدمن (عدة حسابات نصية) + سجل إجراءات
+   كامورو — الخادم الكامل v4.0 (نسخة مؤمّنة)
+   ------------------------------------------------------------
+   الإصلاحات الأمنية المطبقة:
+   1) JWT_SECRET إجباري (بدون قيمة افتراضية) — يوقف التشغيل إن غاب
+   2) حسابات الأدمن من متغيرات البيئة فقط (لا كلمات سر في الكود)
+   3) Rate limiting على الدخول/التسجيل/OTP/الأدمن
+   4) CORS محصور على نطاق الواجهة فقط
+   5) ترويسات أمنية عبر helmet
+   6) رفع الملفات: فحص نوع الملف + حد 15MB + ملف واحد فقط
+   7) جميع استعلامات SQL parameterized (بلا SQL Injection)
+   8) أكواد OTP مخزنة كـ hash + صلاحية 10 دقائق + محاولات محدودة
+   9) لا توجد أي أسرار في الكود إطلاقاً
    ============================================================ */
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const cloudinary = require('cloudinary').v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'camorro-dev-secret-change-me';
 
 /* ============================================================
-   حسابات الأدمن — أضف أو عدّل أو احذف الأسطر كما تريد
-   (كلمات سر نصية واضحة بدون تشفير، ويمكن إضافة أي عدد)
+   1) المفتاح السري — إجباري (بدون fallback ضعيف)
    ============================================================ */
-const ADMINS = [
-  { username: process.env.ADMIN_USERNAME || 'camorro',   password: process.env.ADMIN_PASSWORD || 'admin123' },
-  { username: 'moderator', password: 'mod@2026' }
-];
-const ADMIN_SECRET = (process.env.ADMIN_SECRET || JWT_SECRET) + ':admin';
-const ADMIN_TTL = 60 * 60; // مدة جلسة الأدمن: ساعة واحدة
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.error('[FATAL] عيّن JWT_SECRET في متغيرات البيئة (32 حرفاً على الأقل)');
+  process.exit(1);
+}
 
+/* ============================================================
+   2) حسابات الأدمن — من البيئة فقط، بدون كلمات سر في الكود
+   ============================================================ */
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 8) {
+  console.error('[FATAL] عيّن ADMIN_USERNAME و ADMIN_PASSWORD (8 أحرف على الأقل)');
+  process.exit(1);
+}
+const ADMINS = [{ username: ADMIN_USERNAME, password: ADMIN_PASSWORD }];
+const ADMIN_SECRET = (process.env.ADMIN_SECRET || JWT_SECRET) + ':admin';
+const ADMIN_TTL = 60 * 60; // جلسة الأدمن: ساعة واحدة
+
+/* ============================================================
+   3) Cloudinary
+   ============================================================ */
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+/* ============================================================
+   4) قاعدة البيانات — إجبارية
+   ============================================================ */
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('[FATAL] DATABASE_URL غير مضبوط في متغيرات البيئة');
+  process.exit(1);
+}
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
-    ? { rejectUnauthorized: false } : false
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 
-app.use(cors());
-app.use(express.json({ limit: '5mb' }));
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
+/* ============================================================
+   5) وسيطات عامة
+   ============================================================ */
+app.set('trust proxy', 1);
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(express.json({ limit: '2mb' }));
+
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://gatygqtwdhaorwu.github.io';
+app.use(cors({ origin: ALLOWED_ORIGIN }));
 
 /* ============================================================
-   تهيئة قاعدة البيانات (تلقائية عند أول تشغيل)
+   6) Rate limiting
    ============================================================ */
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      username VARCHAR(50) UNIQUE NOT NULL,
-      email VARCHAR(120),
-      password TEXT NOT NULL,
-      avatar_url TEXT,
-      bio TEXT DEFAULT '',
-      is_private BOOLEAN NOT NULL DEFAULT false,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS posts (
-      id SERIAL PRIMARY KEY,
-      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      caption TEXT DEFAULT '',
-      media_url TEXT,
-      media_type VARCHAR(10) DEFAULT 'image',
-      is_reel BOOLEAN NOT NULL DEFAULT false,
-      hidden BOOLEAN NOT NULL DEFAULT false,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS likes (
-      id SERIAL PRIMARY KEY,
-      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      post_id INT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ DEFAULT now(),
-      UNIQUE(user_id, post_id)
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS comments (
-      id SERIAL PRIMARY KEY,
-      post_id INT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      body TEXT NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS follows (
-      id SERIAL PRIMARY KEY,
-      follower_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      followee_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      status VARCHAR(10) NOT NULL DEFAULT 'accepted',
-      created_at TIMESTAMPTZ DEFAULT now(),
-      UNIQUE(follower_id, followee_id)
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS follow_requests (
-      id SERIAL PRIMARY KEY,
-      follower_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      followee_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ DEFAULT now(),
-      UNIQUE(follower_id, followee_id)
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS stories (
-      id SERIAL PRIMARY KEY,
-      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      media_url TEXT,
-      media_type VARCHAR(10) DEFAULT 'image',
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS conversations (
-      id SERIAL PRIMARY KEY,
-      user_a INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      user_b INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ DEFAULT now(),
-      UNIQUE(user_a, user_b)
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS messages (
-      id SERIAL PRIMARY KEY,
-      conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-      sender_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      body TEXT DEFAULT '',
-      media_url TEXT,
-      media_type VARCHAR(10) DEFAULT 'image',
-      read BOOLEAN NOT NULL DEFAULT false,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS notifications (
-      id SERIAL PRIMARY KEY,
-      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      actor_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      type VARCHAR(30) NOT NULL,
-      post_id INT,
-      body TEXT DEFAULT '',
-      read BOOLEAN NOT NULL DEFAULT false,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS admin_logs (
-      id SERIAL PRIMARY KEY,
-      action VARCHAR(50) NOT NULL,
-      target_type VARCHAR(30) DEFAULT '',
-      target_id INT DEFAULT 0,
-      detail TEXT DEFAULT '',
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
+const apiLimiter    = rateLimit({ windowMs: 60 * 1000,        limit: 120, standardHeaders: 'draft-7', legacyHeaders: false });
+const loginLimiter  = rateLimit({ windowMs: 15 * 60 * 1000,   limit: 5,   standardHeaders: 'draft-7', legacyHeaders: false });
+const regLimiter    = rateLimit({ windowMs: 60 * 60 * 1000,   limit: 10,  standardHeaders: 'draft-7', legacyHeaders: false });
+const otpLimiter    = rateLimit({ windowMs: 15 * 60 * 1000,   limit: 5,   standardHeaders: 'draft-7', legacyHeaders: false });
+const adminLimiter  = rateLimit({ windowMs: 15 * 60 * 1000,   limit: 10,  standardHeaders: 'draft-7', legacyHeaders: false });
+app.use('/api/', apiLimiter);
 
-    // حساب تجريبي إذا كانت القاعدة فارغة
-    const cnt = (await pool.query('SELECT COUNT(*)::int AS c FROM users')).rows[0].c;
-    if (cnt === 0) {
-      const hash = await bcrypt.hash('123456', 10);
-      await pool.query('INSERT INTO users (username, email, password) VALUES ($1,$2,$3)',
-        ['demo', 'demo@camorro.app', hash]);
-      console.log('[Camorro] تم إنشاء الحساب التجريبي demo / 123456');
-    }
-    console.log('[Camorro] قاعدة البيانات جاهزة');
-  } catch (e) {
-    console.error('[Camorro] فشل تهيئة قاعدة البيانات:', e.message);
+/* ============================================================
+   7) رفع الملفات — فحص النوع + حد 15MB + ملف واحد
+   ============================================================ */
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime', 'video/webm'];
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_MIME.includes(file.mimetype)) return cb(new Error('نوع الملف غير مسموح'));
+    cb(null, true);
   }
-})();
+});
 
 /* ============================================================
-   دوال مساعدة
+   8) أدوات مساعدة
    ============================================================ */
-function uploadToCloudinary(buffer, folder, resourceType) {
+function signToken(u) {
+  return jwt.sign({ uid: u.id, username: u.username }, JWT_SECRET, { expiresIn: '7d' });
+}
+function signAdminToken(username) {
+  return jwt.sign({ username, role: 'admin' }, ADMIN_SECRET, { expiresIn: ADMIN_TTL });
+}
+function safeEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+/* ---------- مصادقة المستخدمين ---------- */
+function auth(req, res, next) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : '';
+  if (!token) return res.status(401).json({ error: 'غير مصرح' });
+  try {
+    const p = jwt.verify(token, JWT_SECRET);
+    req.userId = p.uid;
+    req.username = p.username;
+    next();
+  } catch (e) { res.status(401).json({ error: 'جلسة غير صالحة' }); }
+}
+
+/* ---------- مصادقة الأدمن ---------- */
+function adminAuth(req, res, next) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : '';
+  if (!token) return res.status(401).json({ error: 'غير مصرح' });
+  try {
+    const p = jwt.verify(token, ADMIN_SECRET);
+    if (p.role !== 'admin') throw new Error('x');
+    req.adminName = p.username;
+    next();
+  } catch (e) { res.status(401).json({ error: 'جلسة أدمن غير صالحة' }); }
+}
+
+/* ---------- رفع إلى Cloudinary ---------- */
+function uploadToCloudinary(buffer, mime) {
   return new Promise((resolve, reject) => {
+    const resourceType = mime.startsWith('video/') ? 'video' : 'image';
     const stream = cloudinary.uploader.upload_stream(
-      { folder: folder || 'camorro', resource_type: resourceType || 'auto' },
-      (err, result) => { if (err) reject(err); else resolve(result); }
+      { folder: 'camorro', resource_type: resourceType },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result.secure_url);
+      }
     );
     stream.end(buffer);
   });
 }
 
-function mediaTypeOf(mime) {
-  return (mime || '').startsWith('video/') ? 'video' : 'image';
-}
-
-function userPublic(u) {
-  return {
-    id: u.id, username: u.username, email: u.email || '',
-    avatar_url: u.avatar_url || '', bio: u.bio || '',
-    is_private: u.is_private, created_at: u.created_at
-  };
-}
-
-async function logAdmin(action, targetType, targetId, detail) {
+/* ---------- إشعارات ---------- */
+async function notify(userId, actorId, type, postId) {
+  if (!userId || userId === actorId) return;
   try {
     await pool.query(
-      'INSERT INTO admin_logs (action, target_type, target_id, detail) VALUES ($1,$2,$3,$4)',
-      [action, targetType || '', targetId || 0, detail || '']);
-  } catch (e) { /* تجاهل أخطاء السجل */ }
+      'INSERT INTO notifications (user_id, actor_id, type, post_id) VALUES ($1,$2,$3,$4)',
+      [userId, actorId, type, postId || null]
+    );
+  } catch (e) {}
 }
 
-async function notify(userId, actorId, type, postId, body) {
+/* ---------- سجل الأدمن ---------- */
+async function logAdmin(adminName, action, targetType, targetId, details) {
   try {
     await pool.query(
-      'INSERT INTO notifications (user_id, actor_id, type, post_id, body) VALUES ($1,$2,$3,$4,$5)',
-      [userId, actorId, type, postId || null, body || '']);
-  } catch (e) { /* تجاهل */ }
+      'INSERT INTO admin_logs (admin_username, action, target_type, target_id, details) VALUES ($1,$2,$3,$4,$5)',
+      [adminName, action, targetType, targetId || null, details || '']
+    );
+  } catch (e) {}
 }
 
-async function ensureAdminSystemUser() {
-  const sys = (await pool.query('SELECT id FROM users WHERE username=$1', ['__camorro_system__'])).rows[0];
-  if (sys) return sys.id;
-  const hash = await bcrypt.hash(Math.random().toString(36).slice(2), 10);
-  const r = await pool.query(
-    'INSERT INTO users (username, password, bio, is_private) VALUES ($1,$2,$3,true) ON CONFLICT (username) DO NOTHING RETURNING id',
-    ['__camorro_system__', hash, 'حساب نظام كامورو']);
-  if (r.rowCount === 0) {
-    return (await pool.query('SELECT id FROM users WHERE username=$1', ['__camorro_system__'])).rows[0].id;
+/* ---------- إرسال رمز OTP (Resend اختياري + سجل للاختبار) ---------- */
+async function sendOtpEmail(email, code) {
+  const key = process.env.RESEND_API_KEY;
+  if (key) {
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'Camorro <onboarding@resend.dev>',
+          to: email,
+          subject: 'رمز التحقق من بريدك — كامورو',
+          html: '<div dir="rtl" style="font-family:sans-serif;padding:20px"><h2>مرحباً 👋</h2><p>رمز التحقق الخاص بك هو:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#b78103">' + code + '</p><p>الرمز صالح لمدة 10 دقائق.</p></div>'
+        })
+      });
+    } catch (e) { console.error('[OTP-EMAIL]', e.message); }
   }
-  return r.rows[0].id;
+  console.log('[OTP] ' + email + ' → ' + code);
 }
 
-async function findOrCreateConv(a, b) {
-  const x = Math.min(a, b), y = Math.max(a, b);
+async function generateOtp(email) {
+  const code = String(crypto.randomInt(100000, 1000000));
+  const codeHash = await bcrypt.hash(code, 10);
   await pool.query(
-    'INSERT INTO conversations (user_a, user_b) VALUES ($1,$2) ON CONFLICT (user_a, user_b) DO NOTHING',
-    [x, y]).catch(() => {});
-  const r = await pool.query('SELECT id FROM conversations WHERE user_a=$1 AND user_b=$2', [x, y]);
-  return r.rows[0].id;
+    "INSERT INTO otp_codes (email, code_hash, expires_at) VALUES ($1,$2, now() + interval '10 minutes')",
+    [email, codeHash]
+  );
+  await sendOtpEmail(email, code);
 }
 
 /* ============================================================
-   مصادقة المستخدمين (JWT)
+   9) إنشاء الجداول تلقائياً (آمن — لا يؤثر على البيانات الموجودة)
    ============================================================ */
-function authUser(req, res, next) {
-  const h = req.headers.authorization || '';
-  const token = h.replace(/^Bearer\s+/i, '');
-  if (!token) return res.status(401).json({ error: 'غير مصرح' });
-  try {
-    const p = jwt.verify(token, JWT_SECRET);
-    if (!p || !p.sub) throw new Error('bad');
-    req.userId = p.sub;
-    next();
-  } catch (e) {
-    res.status(401).json({ error: 'انتهت الجلسة، سجّل الدخول مجدداً' });
-  }
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      avatar_url TEXT,
+      bio TEXT,
+      is_private BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS posts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      media_url TEXT,
+      media_type TEXT DEFAULT 'image',
+      caption TEXT,
+      is_reel BOOLEAN NOT NULL DEFAULT FALSE,
+      hidden BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS comments (
+      id SERIAL PRIMARY KEY,
+      post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS likes (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, post_id)
+    );
+    CREATE TABLE IF NOT EXISTS follows (
+      follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      followee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'accepted',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (follower_id, followee_id)
+    );
+    CREATE TABLE IF NOT EXISTS stories (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      media_url TEXT NOT NULL,
+      media_type TEXT DEFAULT 'image',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS story_views (
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (story_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+      read BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS conversations (
+      id SERIAL PRIMARY KEY,
+      user1_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user2_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user1_id, user2_id)
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id SERIAL PRIMARY KEY,
+      conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      body TEXT,
+      media_url TEXT,
+      read BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS otp_codes (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS admin_logs (
+      id SERIAL PRIMARY KEY,
+      admin_username TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id INTEGER,
+      details TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_posts_reel ON posts(is_reel);
+    CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id);
+    CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
+    CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id);
+    CREATE INDEX IF NOT EXISTS idx_follows_followee ON follows(followee_id);
+    CREATE INDEX IF NOT EXISTS idx_stories_user ON stories(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_otp_email ON otp_codes(email);
+  `);
+  console.log('[Camorro] تم التأكد من جداول قاعدة البيانات');
 }
 
 /* ============================================================
-   حساب المستخدمين
+   10) الحسابات — تسجيل / دخول / OTP
    ============================================================ */
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', regLimiter, async (req, res) => {
   try {
     const username = String(req.body.username || '').trim();
-    const email = String(req.body.email || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
-    if (!/^[a-zA-Z0-9_.]{3,30}$/.test(username))
-      return res.status(400).json({ error: 'اسم المستخدم 3-30 حرفاً (حروف، أرقام، _ أو .)' });
-    if (password.length < 6)
+
+    if (!/^[a-zA-Z0-9_.]{3,30}$/.test(username)) {
+      return res.status(400).json({ error: 'اسم المستخدم: 3-30 حرفاً (حروف، أرقام، _ أو . فقط)' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'بريد إلكتروني غير صالح' });
+    }
+    if (password.length < 6) {
       return res.status(400).json({ error: 'كلمة المرور 6 أحرف على الأقل' });
-    const exists = (await pool.query('SELECT 1 FROM users WHERE username=$1 OR email=$2', [username, email])).rowCount > 0;
-    if (exists) return res.status(400).json({ error: 'اسم المستخدم أو البريد مستخدم من قبل' });
+    }
+
+    const dup = await pool.query('SELECT id FROM users WHERE username=$1 OR email=$2', [username, email]);
+    if (dup.rowCount > 0) return res.status(409).json({ error: 'اسم المستخدم أو البريد مستخدم مسبقاً' });
+
     const hash = await bcrypt.hash(password, 10);
-    const r = await pool.query('INSERT INTO users (username, email, password) VALUES ($1,$2,$3) RETURNING *', [username, email, hash]);
+    const r = await pool.query(
+      'INSERT INTO users (username, email, password_hash, email_verified) VALUES ($1,$2,$3,FALSE) RETURNING id, username',
+      [username, email, hash]
+    );
     const user = r.rows[0];
-    const token = jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user: userPublic(user) });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+    await generateOtp(email);
+    res.status(201).json({ needs_verification: true, email, user_id: user.id });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
-    const identifier = String(req.body.identifier || '').trim();
+    const identifier = String(req.body.identifier || '').trim().toLowerCase();
     const password = String(req.body.password || '');
-    const r = await pool.query('SELECT * FROM users WHERE username=$1 OR email=$1', [identifier]);
+    if (!identifier || !password) return res.status(400).json({ error: 'يرجى ملء جميع الحقول' });
+
+    const r = await pool.query('SELECT * FROM users WHERE lower(username)=$1 OR lower(email)=$1', [identifier]);
     const user = r.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password)))
-      return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
-    const token = jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user: userPublic(user) });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+    if (!user) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
+
+    if (!user.email_verified) {
+      await generateOtp(user.email);
+      return res.json({ needs_verification: true, email: user.email });
+    }
+    res.json({ token: signToken(user) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.get('/api/me', authUser, async (req, res) => {
+app.post('/api/otp/send', otpLimiter, async (req, res) => {
   try {
-    const u = (await pool.query('SELECT * FROM users WHERE id=$1', [req.userId])).rows[0];
-    if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
-    const posts_count = (await pool.query('SELECT COUNT(*)::int AS c FROM posts WHERE user_id=$1', [u.id])).rows[0].c;
-    const followers_count = (await pool.query('SELECT COUNT(*)::int AS c FROM follows WHERE followee_id=$1 AND status=$2', [u.id, 'accepted'])).rows[0].c;
-    const following_count = (await pool.query('SELECT COUNT(*)::int AS c FROM follows WHERE follower_id=$1 AND status=$2', [u.id, 'accepted'])).rows[0].c;
-    res.json(Object.assign(userPublic(u), { posts_count, followers_count, following_count }));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.patch('/api/me', authUser, async (req, res) => {
-  try {
-    const bio = String(req.body.bio !== undefined ? req.body.bio : '').slice(0, 150);
-    const avatar_url = String(req.body.avatar_url || '').slice(0, 500);
-    const is_private = req.body.is_private === undefined ? undefined : !!req.body.is_private;
-    let sql = 'UPDATE users SET bio=$1', params = [bio];
-    if (avatar_url) { params.push(avatar_url); sql += ', avatar_url=$' + params.length; }
-    if (is_private !== undefined) { params.push(is_private); sql += ', is_private=$' + params.length; }
-    params.push(req.userId);
-    sql += ' WHERE id=$' + params.length;
-    await pool.query(sql, params);
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const u = await pool.query('SELECT id FROM users WHERE email=$1', [email]);
+    if (u.rowCount === 0) return res.status(404).json({ error: 'البريد غير مسجل' });
+    await generateOtp(email);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/me/avatar', authUser, upload.single('avatar'), async (req, res) => {
+app.post('/api/otp/verify', otpLimiter, async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'لا يوجد ملف' });
-    const result = await uploadToCloudinary(req.file.buffer, 'camorro/avatars', 'auto');
-    await pool.query('UPDATE users SET avatar_url=$1 WHERE id=$2', [result.secure_url, req.userId]);
-    res.json({ avatar_url: result.secure_url });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const code = String(req.body.code || '').trim();
+
+    const u = await pool.query('SELECT id, username, password_hash FROM users WHERE email=$1', [email]);
+    if (u.rowCount === 0) return res.status(404).json({ error: 'البريد غير مسجل' });
+    const user = u.rows[0];
+
+    const otps = await pool.query(
+      'SELECT * FROM otp_codes WHERE email=$1 AND used=FALSE AND expires_at > now() ORDER BY id DESC LIMIT 1',
+      [email]
+    );
+    const rec = otps.rows[0];
+    if (!rec) return res.status(400).json({ error: 'لا يوجد رمز صالح. اطلب رمزاً جديداً' });
+    if (rec.attempts >= 5) return res.status(429).json({ error: 'محاولات كثيرة. اطلب رمزاً جديداً' });
+
+    const ok = await bcrypt.compare(code, rec.code_hash);
+    if (!ok) {
+      await pool.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id=$1', [rec.id]);
+      return res.status(400).json({ error: 'الرمز غير صحيح' });
+    }
+
+    await pool.query('UPDATE otp_codes SET used=TRUE WHERE id=$1', [rec.id]);
+    await pool.query('UPDATE users SET email_verified=TRUE WHERE id=$1', [user.id]);
+    res.json({ token: signToken(user) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
 /* ============================================================
-   المستخدمون: بحث / ملف / متابعة
+   11) الملف الشخصي
    ============================================================ */
-app.get('/api/users', authUser, async (req, res) => {
+app.get('/api/me', auth, async (req, res) => {
   try {
-    const q = (req.query.q || '').trim().toLowerCase();
-    if (!q) return res.json([]);
-    const rows = (await pool.query(
-      `SELECT u.id, u.username, u.avatar_url, u.bio, u.is_private, u.created_at,
-              (SELECT COUNT(*)::int FROM follows f WHERE f.followee_id=u.id AND f.status='accepted') AS followers_count
-         FROM users u
-        WHERE (LOWER(u.username) LIKE $1 OR LOWER(COALESCE(u.email,'')) LIKE $1)
-          AND u.username <> '__camorro_system__'
-        ORDER BY u.username LIMIT 50`, ['%' + q + '%'])).rows;
-    const out = [];
-    for (const u of rows) {
-      const is_following = (await pool.query('SELECT 1 FROM follows WHERE follower_id=$1 AND followee_id=$2', [req.userId, u.id])).rowCount > 0;
-      const is_requested = (await pool.query('SELECT 1 FROM follow_requests WHERE follower_id=$1 AND followee_id=$2', [req.userId, u.id])).rowCount > 0;
-      out.push({
-        id: u.id, username: u.username, avatar_url: u.avatar_url || '',
-        bio: u.bio || '', is_private: u.is_private, created_at: u.created_at,
-        followers_count: u.followers_count, is_following, is_requested
-      });
-    }
-    res.json(out);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/users/:username', authUser, async (req, res) => {
-  try {
-    const u = (await pool.query('SELECT * FROM users WHERE username=$1', [req.params.username])).rows[0];
-    if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
-    const posts_count = (await pool.query('SELECT COUNT(*)::int AS c FROM posts WHERE user_id=$1', [u.id])).rows[0].c;
-    const followers_count = (await pool.query('SELECT COUNT(*)::int AS c FROM follows WHERE followee_id=$1 AND status=$2', [u.id, 'accepted'])).rows[0].c;
-    const following_count = (await pool.query('SELECT COUNT(*)::int AS c FROM follows WHERE follower_id=$1 AND status=$2', [u.id, 'accepted'])).rows[0].c;
-    const is_following = (await pool.query('SELECT 1 FROM follows WHERE follower_id=$1 AND followee_id=$2', [req.userId, u.id])).rowCount > 0;
-    const is_requested = (await pool.query('SELECT 1 FROM follow_requests WHERE follower_id=$1 AND followee_id=$2', [req.userId, u.id])).rowCount > 0;
+    const r = await pool.query(
+      'SELECT id, username, email, email_verified, avatar_url, bio, is_private, created_at FROM users WHERE id=$1',
+      [req.userId]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    const u = r.rows[0];
     res.json({
-      user: Object.assign(userPublic(u), { posts_count, followers_count, following_count }),
-      is_following, is_requested
+      id: u.id, username: u.username, email: u.email, email_verified: u.email_verified,
+      avatar_url: u.avatar_url || '', bio: u.bio || '',
+      is_private: u.is_private, private: u.is_private, created_at: u.created_at
     });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/users/:id/follow', authUser, async (req, res) => {
+app.patch('/api/me', auth, async (req, res) => {
   try {
-    const me = req.userId, target = Number(req.params.id);
-    if (me === target) return res.status(400).json({ error: 'لا يمكنك متابعة نفسك' });
-    const u = (await pool.query('SELECT id, is_private FROM users WHERE id=$1', [target])).rows[0];
-    if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
-    if (u.is_private) {
-      await pool.query('INSERT INTO follow_requests (follower_id, followee_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [me, target]);
-      await notify(target, me, 'follow_request', null, '');
-    } else {
-      await pool.query(
-        'INSERT INTO follows (follower_id, followee_id, status) VALUES ($1,$2,$3) ON CONFLICT (follower_id, followee_id) DO UPDATE SET status=$3',
-        [me, target, 'accepted']);
-      await notify(target, me, 'follow', null, '');
-    }
+    const bio = String(req.body.bio || '').trim().slice(0, 150);
+    await pool.query('UPDATE users SET bio=$1 WHERE id=$2', [bio, req.userId]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.delete('/api/users/:id/follow', authUser, async (req, res) => {
+app.post('/api/me/avatar', auth, upload.single('avatar'), async (req, res) => {
   try {
-    const me = req.userId, target = Number(req.params.id);
-    await pool.query('DELETE FROM follows WHERE follower_id=$1 AND followee_id=$2', [me, target]);
-    await pool.query('DELETE FROM follow_requests WHERE follower_id=$1 AND followee_id=$2', [me, target]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/users/:id/followers', authUser, async (req, res) => {
-  try {
-    const rows = (await pool.query(
-      `SELECT u.id, u.username, u.avatar_url, u.bio, u.is_private
-         FROM follows f JOIN users u ON u.id = f.follower_id
-        WHERE f.followee_id=$1 AND f.status='accepted' ORDER BY f.created_at DESC LIMIT 200`,
-      [Number(req.params.id)])).rows;
-    res.json(rows.map(u => ({ id: u.id, username: u.username, avatar_url: u.avatar_url || '', bio: u.bio || '', is_private: u.is_private })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/users/:id/following', authUser, async (req, res) => {
-  try {
-    const rows = (await pool.query(
-      `SELECT u.id, u.username, u.avatar_url, u.bio, u.is_private
-         FROM follows f JOIN users u ON u.id = f.followee_id
-        WHERE f.follower_id=$1 AND f.status='accepted' ORDER BY f.created_at DESC LIMIT 200`,
-      [Number(req.params.id)])).rows;
-    res.json(rows.map(u => ({ id: u.id, username: u.username, avatar_url: u.avatar_url || '', bio: u.bio || '', is_private: u.is_private })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+    if (!req.file) return res.status(400).json({ error: 'أرفق صورة' });
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    await pool.query('UPDATE users SET avatar_url=$1 WHERE id=$2', [url, req.userId]);
+    res.json({ avatar_url: url });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
 /* ============================================================
-   المنشورات: إنشاء / حذف / إعجاب / تعليق / التغذية
+   12) المنشورات والريلز
    ============================================================ */
-async function buildPost(p, meId) {
-  const likes_count = (await pool.query('SELECT COUNT(*)::int AS c FROM likes WHERE post_id=$1', [p.id])).rows[0].c;
-  const comments_count = (await pool.query('SELECT COUNT(*)::int AS c FROM comments WHERE post_id=$1', [p.id])).rows[0].c;
-  const liked = (await pool.query('SELECT 1 FROM likes WHERE post_id=$1 AND user_id=$2', [p.id, meId])).rowCount > 0;
+const POST_SELECT = `
+  SELECT p.id, p.user_id, p.media_url, p.media_type, p.caption, p.is_reel, p.created_at,
+         u.username, u.avatar_url,
+         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) AS likes_count,
+         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) AS comments_count,
+         EXISTS (SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) AS liked_by_me
+    FROM posts p JOIN users u ON u.id = p.user_id
+`;
+
+function fmtPost(p) {
   return {
-    id: p.id, user_id: p.user_id, username: p.username, avatar_url: p.avatar_url || '',
-    caption: p.caption || '', media_url: p.media_url || '', media_type: p.media_type || 'image',
-    is_reel: p.is_reel, hidden: p.hidden, created_at: p.created_at,
-    likes_count, comments_count, liked_by_me: liked
+    id: p.id, user_id: p.user_id, username: p.username,
+    avatar_url: p.avatar_url || '', media_url: p.media_url || '',
+    media_type: p.media_type || 'image', caption: p.caption || '',
+    is_reel: p.is_reel, likes_count: p.likes_count, comments_count: p.comments_count,
+    liked_by_me: !!p.liked_by_me, created_at: p.created_at
   };
 }
 
-app.get('/api/feed', authUser, async (req, res) => {
+app.get('/api/feed', auth, async (req, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 30, 100);
     const rows = (await pool.query(
-      `SELECT p.id, p.user_id, p.caption, p.media_url, p.media_type, p.is_reel, p.hidden, p.created_at,
-              u.username, u.avatar_url
-         FROM posts p JOIN users u ON u.id = p.user_id
-        WHERE p.hidden = false
-          AND (p.user_id = $1 OR p.user_id IN (
-                SELECT followee_id FROM follows WHERE follower_id = $1 AND status = 'accepted'))
-        ORDER BY p.created_at DESC LIMIT $2`, [req.userId, limit])).rows;
-    const out = [];
-    for (const p of rows) out.push(await buildPost(p, req.userId));
-    res.json(out);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+      POST_SELECT + ` WHERE p.hidden=FALSE AND (p.user_id=$1 OR p.user_id IN
+        (SELECT followee_id FROM follows WHERE follower_id=$1 AND status='accepted'))
+        ORDER BY p.created_at DESC LIMIT 50`,
+      [req.userId]
+    )).rows;
+    res.json(rows.map(fmtPost));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.get('/api/posts', authUser, async (req, res) => {
+app.get('/api/reels', auth, async (req, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 30, 100);
     const rows = (await pool.query(
-      `SELECT p.id, p.user_id, p.caption, p.media_url, p.media_type, p.is_reel, p.hidden, p.created_at,
-              u.username, u.avatar_url
-         FROM posts p JOIN users u ON u.id = p.user_id
-        WHERE p.hidden = false
-        ORDER BY p.created_at DESC LIMIT $1`, [limit])).rows;
-    const out = [];
-    for (const p of rows) out.push(await buildPost(p, req.userId));
-    res.json(out);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+      POST_SELECT + ' WHERE p.is_reel=TRUE AND p.hidden=FALSE ORDER BY p.created_at DESC LIMIT 50',
+      [req.userId]
+    )).rows;
+    res.json(rows.map(fmtPost));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/posts', authUser, upload.single('media'), async (req, res) => {
+app.get('/api/users/:username/posts', auth, async (req, res) => {
   try {
-    const caption = String(req.body.caption || '').slice(0, 1000);
-    const is_reel = req.body.is_reel === 'true' || req.body.is_reel === '1' || req.body.is_reel === true;
-    let media_url = '', media_type = 'image';
-    if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer, 'camorro/posts', 'auto');
-      media_url = result.secure_url;
-      media_type = mediaTypeOf(req.file.mimetype);
+    const username = String(req.params.username).trim();
+    const u = await pool.query('SELECT id, is_private FROM users WHERE username=$1', [username]);
+    if (u.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    const target = u.rows[0];
+
+    if (target.is_private && target.id !== req.userId) {
+      const f = await pool.query(
+        "SELECT 1 FROM follows WHERE follower_id=$1 AND followee_id=$2 AND status='accepted'",
+        [req.userId, target.id]
+      );
+      if (f.rowCount === 0) return res.status(403).json({ error: 'الحساب خاص' });
     }
-    const r = await pool.query(
-      'INSERT INTO posts (user_id, caption, media_url, media_type, is_reel) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [req.userId, caption, media_url, media_type, is_reel]);
-    const p = r.rows[0];
-    p.username = (await pool.query('SELECT username, avatar_url FROM users WHERE id=$1', [p.user_id])).rows[0].username;
-    res.json(await buildPost(p, req.userId));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+
+    const rows = (await pool.query(
+      POST_SELECT + ' WHERE p.user_id=$2 AND p.hidden=FALSE ORDER BY p.created_at DESC LIMIT 50',
+      [req.userId, target.id]
+    )).rows;
+    res.json(rows.map(fmtPost));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.delete('/api/posts/:id', authUser, async (req, res) => {
+app.post('/api/posts', auth, upload.single('media'), async (req, res) => {
   try {
-    const pid = Number(req.params.id);
-    const r = await pool.query('DELETE FROM posts WHERE id=$1 AND user_id=$2', [pid, req.userId]);
+    const caption = String(req.body.caption || '').trim().slice(0, 2200);
+    const isReel = req.body.is_reel === 'true' || req.body.is_reel === true;
+    let mediaUrl = null, mediaType = null;
+
+    if (req.file) {
+      mediaUrl = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+      mediaType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+    }
+    if (!mediaUrl && !caption) return res.status(400).json({ error: 'أضف صورة أو نصاً' });
+
+    const r = await pool.query(
+      'INSERT INTO posts (user_id, media_url, media_type, caption, is_reel) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [req.userId, mediaUrl, mediaType, caption, isReel]
+    );
+    res.status(201).json({ id: r.rows[0].id });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.delete('/api/posts/:id', auth, async (req, res) => {
+  try {
+    const r = await pool.query('DELETE FROM posts WHERE id=$1 AND user_id=$2', [Number(req.params.id), req.userId]);
     if (r.rowCount === 0) return res.status(403).json({ error: 'لا يمكنك حذف هذا المنشور' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/posts/:id/like', authUser, async (req, res) => {
+app.post('/api/posts/:id/like', auth, async (req, res) => {
   try {
     const pid = Number(req.params.id);
-    const p = (await pool.query('SELECT user_id FROM posts WHERE id=$1', [pid])).rows[0];
-    if (!p) return res.status(404).json({ error: 'المنشور غير موجود' });
-    await pool.query('INSERT INTO likes (user_id, post_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.userId, pid]);
-    if (p.user_id !== req.userId) await notify(p.user_id, req.userId, 'like', pid, '');
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+    const p = await pool.query('SELECT id, user_id FROM posts WHERE id=$1 AND hidden=FALSE', [pid]);
+    if (p.rowCount === 0) return res.status(404).json({ error: 'المنشور غير موجود' });
+
+    const existing = await pool.query('SELECT 1 FROM likes WHERE user_id=$1 AND post_id=$2', [req.userId, pid]);
+    if (existing.rowCount > 0) {
+      await pool.query('DELETE FROM likes WHERE user_id=$1 AND post_id=$2', [req.userId, pid]);
+      return res.json({ liked: false });
+    }
+    await pool.query('INSERT INTO likes (user_id, post_id) VALUES ($1,$2)', [req.userId, pid]);
+    await notify(p.rows[0].user_id, req.userId, 'like', pid);
+    res.json({ liked: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.delete('/api/posts/:id/like', authUser, async (req, res) => {
+/* ============================================================
+   13) التعليقات
+   ============================================================ */
+app.post('/api/posts/:id/comments', auth, async (req, res) => {
   try {
-    await pool.query('DELETE FROM likes WHERE post_id=$1 AND user_id=$2', [Number(req.params.id), req.userId]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+    const pid = Number(req.params.id);
+    const body = String(req.body.body || '').trim().slice(0, 1000);
+    if (!body) return res.status(400).json({ error: 'اكتب تعليقاً' });
+
+    const p = await pool.query('SELECT id, user_id FROM posts WHERE id=$1 AND hidden=FALSE', [pid]);
+    if (p.rowCount === 0) return res.status(404).json({ error: 'المنشور غير موجود' });
+
+    const r = await pool.query(
+      'INSERT INTO comments (post_id, user_id, body) VALUES ($1,$2,$3) RETURNING id',
+      [pid, req.userId, body]
+    );
+    await notify(p.rows[0].user_id, req.userId, 'comment', pid);
+    res.status(201).json({ id: r.rows[0].id });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.get('/api/posts/:id/comments', authUser, async (req, res) => {
+app.get('/api/posts/:id/comments', auth, async (req, res) => {
   try {
     const rows = (await pool.query(
-      `SELECT c.id, c.post_id, c.body, c.created_at, u.id AS user_id, u.username, u.avatar_url
-         FROM comments c JOIN users u ON u.id = c.user_id
-        WHERE c.post_id=$1 ORDER BY c.created_at ASC`, [Number(req.params.id)])).rows;
+      `SELECT c.id, c.body, c.created_at, u.id AS user_id, u.username, u.avatar_url
+         FROM comments c JOIN users u ON u.id=c.user_id
+        WHERE c.post_id=$1 ORDER BY c.id ASC`,
+      [Number(req.params.id)]
+    )).rows;
     res.json(rows.map(c => ({
-      id: c.id, post_id: c.post_id, user_id: c.user_id, username: c.username,
-      avatar_url: c.avatar_url || '', body: c.body, created_at: c.created_at
+      id: c.id, body: c.body, created_at: c.created_at,
+      user_id: c.user_id, username: c.username, avatar_url: c.avatar_url || ''
     })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/posts/:id/comments', authUser, async (req, res) => {
-  try {
-    const pid = Number(req.params.id);
-    const body = String(req.body.body || '').trim();
-    if (!body) return res.status(400).json({ error: 'اكتب التعليق أولاً' });
-    const p = (await pool.query('SELECT user_id FROM posts WHERE id=$1', [pid])).rows[0];
-    if (!p) return res.status(404).json({ error: 'المنشور غير موجود' });
-    const r = await pool.query(
-      'INSERT INTO comments (post_id, user_id, body) VALUES ($1,$2,$3) RETURNING *', [pid, req.userId, body]);
-    if (p.user_id !== req.userId) await notify(p.user_id, req.userId, 'comment', pid, body.slice(0, 80));
-    res.json({ id: r.rows[0].id, post_id: pid, user_id: req.userId, body, created_at: r.rows[0].created_at });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.delete('/api/comments/:id', authUser, async (req, res) => {
+app.delete('/api/comments/:id', auth, async (req, res) => {
   try {
     const r = await pool.query('DELETE FROM comments WHERE id=$1 AND user_id=$2', [Number(req.params.id), req.userId]);
     if (r.rowCount === 0) return res.status(403).json({ error: 'لا يمكنك حذف هذا التعليق' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
 /* ============================================================
-   القصص (ستوري)
+   14) القصص (ستوري)
    ============================================================ */
-app.get('/api/stories', authUser, async (req, res) => {
+app.get('/api/stories', auth, async (req, res) => {
   try {
     const rows = (await pool.query(
-      `SELECT s.id, s.user_id, s.media_url, s.media_type, s.created_at,
-              u.username, u.avatar_url
-         FROM stories s JOIN users u ON u.id = s.user_id
+      `SELECT s.id, s.user_id, s.media_url, s.media_type, s.created_at, u.username, u.avatar_url,
+              EXISTS (SELECT 1 FROM story_views v WHERE v.story_id=s.id AND v.user_id=$1) AS viewed
+         FROM stories s JOIN users u ON u.id=s.user_id
         WHERE s.created_at > now() - interval '24 hours'
-          AND (s.user_id = $1 OR s.user_id IN (
-                SELECT followee_id FROM follows WHERE follower_id = $1 AND status = 'accepted'))
-        ORDER BY s.created_at DESC`, [req.userId])).rows;
+          AND (s.user_id=$1 OR s.user_id IN
+            (SELECT followee_id FROM follows WHERE follower_id=$1 AND status='accepted'))
+        ORDER BY s.created_at DESC LIMIT 100`,
+      [req.userId]
+    )).rows;
     res.json(rows.map(s => ({
       id: s.id, user_id: s.user_id, username: s.username, avatar_url: s.avatar_url || '',
-      media_url: s.media_url, media_type: s.media_type || 'image', created_at: s.created_at
+      media_url: s.media_url, media_type: s.media_type || 'image',
+      created_at: s.created_at, viewed: !!s.viewed
     })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.post('/api/stories', authUser, upload.single('media'), async (req, res) => {
+app.post('/api/stories', auth, upload.single('media'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'لا يوجد ملف' });
-    const result = await uploadToCloudinary(req.file.buffer, 'camorro/stories', 'auto');
+    if (!req.file) return res.status(400).json({ error: 'أرفق صورة أو فيديو' });
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
     const r = await pool.query(
-      'INSERT INTO stories (user_id, media_url, media_type) VALUES ($1,$2,$3) RETURNING *',
-      [req.userId, result.secure_url, mediaTypeOf(req.file.mimetype)]);
-    res.json({ id: r.rows[0].id, user_id: req.userId, media_url: result.secure_url, created_at: r.rows[0].created_at });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+      'INSERT INTO stories (user_id, media_url, media_type) VALUES ($1,$2,$3) RETURNING id',
+      [req.userId, url, type]
+    );
+    res.status(201).json({ id: r.rows[0].id });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
-app.delete('/api/stories/:id', authUser, async (req, res) => {
+app.delete('/api/stories/:id', auth, async (req, res) => {
   try {
     const r = await pool.query('DELETE FROM stories WHERE id=$1 AND user_id=$2', [Number(req.params.id), req.userId]);
     if (r.rowCount === 0) return res.status(403).json({ error: 'لا يمكنك حذف هذه القصة' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/stories/:userId', authUser, async (req, res) => {
-  try {
-    const rows = (await pool.query(
-      `SELECT id, media_url, media_type, created_at FROM stories
-        WHERE user_id=$1 AND created_at > now() - interval '24 hours'
-        ORDER BY created_at DESC`, [Number(req.params.userId)])).rows;
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-/* ============================================================
-   الإشعارات
-   ============================================================ */
-app.get('/api/notifications', authUser, async (req, res) => {
-  try {
-    const rows = (await pool.query(
-      `SELECT n.id, n.type, n.post_id, n.body, n.read, n.created_at,
-              u.username AS actor_username, u.avatar_url AS actor_avatar
-         FROM notifications n JOIN users u ON u.id = n.actor_id
-        WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 50`, [req.userId])).rows;
-    res.json(rows.map(n => ({
-      id: n.id, type: n.type, post_id: n.post_id, body: n.body || '',
-      read: n.read, created_at: n.created_at,
-      actor_username: n.actor_username, actor_avatar: n.actor_avatar || ''
-    })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/notifications/unread', authUser, async (req, res) => {
-  try {
-    const c = (await pool.query('SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND read=false', [req.userId])).rows[0].c;
-    res.json({ count: c });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.post('/api/notifications/read', authUser, async (req, res) => {
-  try {
-    await pool.query('UPDATE notifications SET read=true WHERE user_id=$1', [req.userId]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-/* ============================================================
-   الرسائل والمحادثات
-   ============================================================ */
-app.get('/api/conversations', authUser, async (req, res) => {
-  try {
-    const me = req.userId;
-    const rows = (await pool.query(
-      `SELECT c.id,
-              CASE WHEN c.user_a=$1 THEN c.user_b ELSE c.user_a END AS other_id,
-              u.username AS other_name, u.avatar_url AS other_avatar,
-              (SELECT m.body FROM messages m WHERE m.conversation_id=c.id ORDER BY m.created_at DESC LIMIT 1) AS last_body,
-              (SELECT (m.media_url IS NOT NULL) FROM messages m WHERE m.conversation_id=c.id ORDER BY m.created_at DESC LIMIT 1) AS last_media,
-              (SELECT m.created_at FROM messages m WHERE m.conversation_id=c.id ORDER BY m.created_at DESC LIMIT 1) AS last_at,
-              (SELECT COUNT(*)::int FROM messages m WHERE m.conversation_id=c.id AND m.sender_id<>$1 AND m.read=false) AS unread
-         FROM conversations c JOIN users u ON u.id = CASE WHEN c.user_a=$1 THEN c.user_b ELSE c.user_a END
-        WHERE c.user_a=$1 OR c.user_b=$1
-        ORDER BY last_at DESC NULLS LAST`, [me])).rows;
-    res.json(rows.map(c => ({
-      id: c.id, other_id: c.other_id, other_name: c.other_name, other_avatar: c.other_avatar || '',
-      last_body: c.last_body || '', last_media: !!c.last_media, last_at: c.last_at, unread: c.unread || 0
-    })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.post('/api/conversations', authUser, async (req, res) => {
-  try {
-    const target = Number(req.body.user_id);
-    if (!target || target === req.userId) return res.status(400).json({ error: 'بيانات ناقصة' });
-    const convId = await findOrCreateConv(req.userId, target);
-    res.json({ conversation_id: convId });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/conversations/:id/messages', authUser, async (req, res) => {
-  try {
-    const convId = Number(req.params.id);
-    const conv = (await pool.query('SELECT id FROM conversations WHERE id=$1 AND (user_a=$2 OR user_b=$2)', [convId, req.userId])).rows[0];
-    if (!conv) return res.status(403).json({ error: 'غير مصرح' });
-    await pool.query('UPDATE messages SET read=true WHERE conversation_id=$1 AND sender_id<>$2', [convId, req.userId]);
-    const rows = (await pool.query(
-      'SELECT id, sender_id, body, media_url, media_type, created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC',
-      [convId])).rows;
-    res.json(rows.map(m => ({
-      id: m.id, sender_id: m.sender_id, body: m.body || '',
-      media_url: m.media_url || '', media_type: m.media_type || 'image', created_at: m.created_at
-    })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.post('/api/conversations/:id/messages', authUser, async (req, res) => {
-  try {
-    const convId = Number(req.params.id);
-    const body = String(req.body.body || '').trim();
-    const conv = (await pool.query('SELECT id FROM conversations WHERE id=$1 AND (user_a=$2 OR user_b=$2)', [convId, req.userId])).rows[0];
-    if (!conv) return res.status(403).json({ error: 'غير مصرح' });
-    if (!body) return res.status(400).json({ error: 'اكتب الرسالة أولاً' });
-    await pool.query('INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1,$2,$3)', [convId, req.userId, body]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.post('/api/conversations/:id/messages/media', authUser, upload.single('media'), async (req, res) => {
-  try {
-    const convId = Number(req.params.id);
-    const conv = (await pool.query('SELECT id FROM conversations WHERE id=$1 AND (user_a=$2 OR user_b=$2)', [convId, req.userId])).rows[0];
-    if (!conv) return res.status(403).json({ error: 'غير مصرح' });
-    if (!req.file) return res.status(400).json({ error: 'لا يوجد ملف' });
-    const result = await uploadToCloudinary(req.file.buffer, 'camorro/messages', 'auto');
-    await pool.query(
-      'INSERT INTO messages (conversation_id, sender_id, media_url, media_type) VALUES ($1,$2,$3,$4)',
-      [convId, req.userId, result.secure_url, mediaTypeOf(req.file.mimetype)]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/messages/unread-total', authUser, async (req, res) => {
-  try {
-    const c = (await pool.query(
-      `SELECT COUNT(*)::int AS c FROM conversations c
-        WHERE (c.user_a=$1 OR c.user_b=$1) AND EXISTS (
-          SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.sender_id<>$1 AND m.read=false)`,
-      [req.userId])).rows[0].c;
-    res.json({ count: c });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-/* ============================================================
-   لوحة تحكم الأدمن — عدة حسابات نصية
-   ============================================================ */
-app.post('/api/admin/login', async (req, res) => {
-  try {
-    const username = String(req.body.username || '').trim();
-    const password = String(req.body.password || '');
-    const admin = ADMINS.find(a => a.username === username && a.password === password);
-    if (!admin) {
-      await logAdmin('failed_login', 'admin', 0, username.slice(0, 50));
-      return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
-    }
-    const token = jwt.sign(
-      { role: 'admin', username: admin.username, exp: Math.floor(Date.now() / 1000) + ADMIN_TTL },
-      ADMIN_SECRET
-    );
-    await logAdmin('admin_login', 'admin', 0, admin.username);
-    res.json({ ok: true, token, username: admin.username, expires_in: ADMIN_TTL });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-function adminAuth(req, res, next) {
-  const token = req.headers['x-admin-token']
-             || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!token) return res.status(401).json({ error: 'غير مصرح' });
-  try {
-    const payload = jwt.verify(token, ADMIN_SECRET);
-    if (!payload || payload.role !== 'admin') throw new Error('bad token');
-    req.admin = payload;
-    next();
   } catch (e) {
-    res.status(401).json({ error: 'انتهت الجلسة، سجّل الدخول مجدداً' });
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
   }
-}
-
-app.post('/api/admin/logout', adminAuth, async (req, res) => {
-  try {
-    await logAdmin('admin_logout', 'admin', 0, req.admin.username);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
-app.get('/api/admin/stats', adminAuth, async (req, res) => {
-  try {
-    const [u, p, r, s, c, f, m, cv] = await Promise.all([
-      pool.query('SELECT COUNT(*)::int AS c FROM users'),
-      pool.query('SELECT COUNT(*)::int AS c FROM posts'),
-      pool.query("SELECT COUNT(*)::int AS c FROM posts WHERE is_reel=true"),
-      pool.query('SELECT COUNT(*)::int AS c FROM stories'),
-      pool.query('SELECT COUNT(*)::int AS c FROM comments'),
-      pool.query("SELECT COUNT(*)::int AS c FROM follows WHERE status='accepted'"),
-      pool.query('SELECT COUNT(*)::int AS c FROM messages'),
-      pool.query('SELECT COUNT(*)::int AS c FROM conversations')
-    ]);
-    res.json({
-      users: u.rows[0].c, posts: p.rows[0].c, reels: r.rows[0].c,
-      stories: s.rows[0].c, comments: c.rows[0].c, follows: f.rows[0].c,
-      messages: m.rows[0].c, conversations: cv.rows[0].c
-    });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/users', adminAuth, async (req, res) => {
-  try {
-    const q = (req.query.q || '').trim().toLowerCase();
-    let sql = `SELECT u.id, u.username, u.email, u.avatar_url, u.bio, u.is_private, u.created_at,
-                      (SELECT COUNT(*)::int FROM posts p WHERE p.user_id=u.id) AS post_count,
-                      (SELECT COUNT(*)::int FROM follows f WHERE f.followee_id=u.id AND f.status='accepted') AS followers
-                 FROM users u WHERE u.username <> '__camorro_system__'`;
-    const params = [];
-    if (q) { params.push('%' + q + '%'); sql += ' AND (LOWER(u.username) LIKE $1 OR LOWER(COALESCE(u.email,\'\')) LIKE $1)'; }
-    sql += ' ORDER BY u.created_at DESC LIMIT 200';
-    res.json((await pool.query(sql, params)).rows.map(u => ({
-      id: u.id, username: u.username, email: u.email || '', avatar_url: u.avatar_url || '',
-      bio: u.bio || '', is_private: u.is_private, created_at: u.created_at,
-      post_count: u.post_count, followers: u.followers
-    })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.patch('/api/admin/users/:id/private', adminAuth, async (req, res) => {
-  try {
-    const uid = Number(req.params.id);
-    const val = !!(req.body && req.body.is_private);
-    const r = await pool.query('UPDATE users SET is_private=$1 WHERE id=$2', [val, uid]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
-    await logAdmin(val ? 'make_private' : 'make_public', 'user', uid, '');
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.post('/api/admin/users/:id/reset-password', adminAuth, async (req, res) => {
-  try {
-    const uid = Number(req.params.id);
-    const np = String((req.body && req.body.new_password) || '').trim();
-    if (np.length < 6) return res.status(400).json({ error: 'كلمة المرور الجديدة 6 أحرف على الأقل' });
-    const hash = await bcrypt.hash(np, 10);
-    const r = await pool.query('UPDATE users SET password=$1 WHERE id=$2', [hash, uid]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
-    await logAdmin('reset_password', 'user', uid, 'تم تغيير كلمة مرور المستخدم #' + uid);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.delete('/api/admin/users/:id', adminAuth, async (req, res) => {
-  try {
-    const uid = Number(req.params.id);
-    const u = (await pool.query('SELECT username FROM users WHERE id=$1', [uid])).rows[0];
-    if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
-    await pool.query('DELETE FROM users WHERE id=$1', [uid]);
-    await logAdmin('delete_user', 'user', uid, u.username);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/posts', adminAuth, async (req, res) => {
-  try {
-    const q = (req.query.q || '').trim().toLowerCase();
-    const type = req.query.type || 'all';
-    const limit = Math.min(Number(req.query.limit) || 60, 200);
-    const params = [];
-    let sql = `SELECT p.*, u.username FROM posts p JOIN users u ON u.id=p.user_id WHERE 1=1`;
-    if (type === 'post') { params.push(false); sql += ' AND p.is_reel=$1'; }
-    else if (type === 'reel') { params.push(true); sql += ' AND p.is_reel=$1'; }
-    if (q) { params.push('%' + q + '%'); sql += ' AND LOWER(u.username) LIKE $' + params.length; }
-    params.push(limit);
-    sql += ' ORDER BY p.created_at DESC LIMIT $' + params.length;
-    const rows = (await pool.query(sql, params)).rows;
-    const out = [];
-    for (const p of rows) {
-      const likes_count = (await pool.query('SELECT COUNT(*)::int AS c FROM likes WHERE post_id=$1', [p.id])).rows[0].c;
-      const comments_count = (await pool.query('SELECT COUNT(*)::int AS c FROM comments WHERE post_id=$1', [p.id])).rows[0].c;
-      out.push({
-        id: p.id, user_id: p.user_id, username: p.username, caption: p.caption || '',
-        media_url: p.media_url || '', media_type: p.media_type || 'image',
-        is_reel: p.is_reel, hidden: p.hidden, created_at: p.created_at,
-        likes_count, comments_count
-      });
-    }
-    res.json(out);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.patch('/api/admin/posts/:id', adminAuth, async (req, res) => {
-  try {
-    const pid = Number(req.params.id);
-    const hidden = !!(req.body && req.body.hidden);
-    const r = await pool.query('UPDATE posts SET hidden=$1 WHERE id=$2', [hidden, pid]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'المنشور غير موجود' });
-    await logAdmin(hidden ? 'hide_post' : 'show_post', 'post', pid, '');
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.delete('/api/admin/posts/:id', adminAuth, async (req, res) => {
-  try {
-    const pid = Number(req.params.id);
-    await pool.query('DELETE FROM posts WHERE id=$1', [pid]);
-    await logAdmin('delete_post', 'post', pid, '');
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/comments', adminAuth, async (req, res) => {
-  try {
-    const rows = (await pool.query(
-      'SELECT c.id, c.post_id, c.body, c.created_at, u.username FROM comments c JOIN users u ON u.id=c.user_id ORDER BY c.created_at DESC LIMIT 300')).rows;
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.delete('/api/admin/comments/:id', adminAuth, async (req, res) => {
-  try {
-    const cid = Number(req.params.id);
-    await pool.query('DELETE FROM comments WHERE id=$1', [cid]);
-    await logAdmin('delete_comment', 'comment', cid, '');
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/stories', adminAuth, async (req, res) => {
-  try {
-    const rows = (await pool.query(
-      `SELECT s.id, s.user_id, s.media_url, s.media_type, s.created_at, u.username,
-              (s.created_at < now() - interval '24 hours') AS expired
-         FROM stories s JOIN users u ON u.id=s.user_id
-        ORDER BY s.created_at DESC LIMIT 200`)).rows;
-    res.json(rows.map(s => ({
-      id: s.id, user_id: s.user_id, username: s.username, media_url: s.media_url || '',
-      media_type: s.media_type || 'image', created_at: s.created_at, expired: s.expired
-    })));
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.delete('/api/admin/stories/:id', adminAuth, async (req, res) => {
+app.post('/api/stories/:id/view', auth, async (req, res) => {
   try {
     const sid = Number(req.params.id);
-    await pool.query('DELETE FROM stories WHERE id=$1', [sid]);
-    await logAdmin('delete_story', 'story', sid, '');
+    await pool.query(
+      'INSERT INTO story_views (story_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [sid, req.userId]
+    );
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/users/:id/chat', adminAuth, async (req, res) => {
-  try {
-    const targetId = Number(req.params.id);
-    const sysId = await ensureAdminSystemUser();
-    const convId = await findOrCreateConv(sysId, targetId);
-    const msgs = (await pool.query(
-      'SELECT id, sender_id, body, media_url, created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC',
-      [convId])).rows;
-    res.json({
-      conversation_id: convId,
-      messages: msgs.map(m => ({
-        id: m.id, body: m.body || '', media_url: m.media_url || '',
-        is_mine: m.sender_id === sysId, created_at: m.created_at
-      }))
-    });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.post('/api/admin/message', adminAuth, async (req, res) => {
-  try {
-    const targetId = Number(req.body.user_id);
-    const body = String(req.body.body || '').trim();
-    if (!targetId || !body) return res.status(400).json({ error: 'بيانات ناقصة' });
-    const sysId = await ensureAdminSystemUser();
-    if (targetId === sysId) return res.status(400).json({ error: 'لا يمكن مراسلة حساب النظام' });
-    const convId = await findOrCreateConv(sysId, targetId);
-    await pool.query('INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1,$2,$3)', [convId, sysId, body]);
-    await logAdmin('admin_message', 'user', targetId, body.slice(0, 60) + (body.length > 60 ? '...' : ''));
-    res.json({ ok: true, conversation_id: convId });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/conversations/:id/messages', adminAuth, async (req, res) => {
-  try {
-    const convId = Number(req.params.id);
-    const msgs = (await pool.query(
-      `SELECT m.id, m.sender_id, m.body, m.media_url, m.created_at, u.username AS sender_username
-         FROM messages m JOIN users u ON u.id=m.sender_id
-        WHERE m.conversation_id=$1 ORDER BY m.created_at ASC`, [convId])).rows;
-    res.json({ messages: msgs.map(m => ({
-      id: m.id, sender_username: m.sender_username, body: m.body || '',
-      media_url: m.media_url || '', created_at: m.created_at
-    })) });
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
-});
-
-app.get('/api/admin/logs', adminAuth, async (req, res) => {
-  try {
-    const limit = Math.min(Number(req.query.limit) || 100, 500);
-    res.json((await pool.query('SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT $1', [limit])).rows);
-  } catch (e) { res.status(500).json({ error: 'خطأ في الخادم' }); }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
 
 /* ============================================================
-   تشغيل الخادم
+   15) المتابعة — بحث، متابعة، إلغاء، طلبات
    ============================================================ */
-app.listen(PORT, () => {
-  console.log('[Camorro] الخادم يعمل على المنفذ ' + PORT);
+app.get('/api/search', auth, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json([]);
+    const rows = (await pool.query(
+      `SELECT id, username, avatar_url, bio, is_private,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followee_id=u.id AND f.status='accepted') AS is_following,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followee_id=u.id AND f.status='pending') AS has_pending
+         FROM users u
+        WHERE username ILIKE '%'||$2||'%' LIMIT 30`,
+      [req.userId, q]
+    )).rows;
+    res.json(rows.map(u => ({
+      id: u.id, username: u.username, avatar_url: u.avatar_url || '',
+      bio: u.bio || '', is_private: u.is_private, is_following: !!u.is_following,
+      has_pending: !!u.has_pending
+    })));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/users/:username', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT u.id, u.username, u.avatar_url, u.bio, u.is_private, u.created_at,
+              (SELECT COUNT(*)::int FROM posts p WHERE p.user_id=u.id AND p.hidden=FALSE) AS posts_count,
+              (SELECT COUNT(*)::int FROM follows f WHERE f.followee_id=u.id AND f.status='accepted') AS followers_count,
+              (SELECT COUNT(*)::int FROM follows f WHERE f.follower_id=u.id AND f.status='accepted') AS following_count,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followee_id=u.id AND f.status='accepted') AS is_following,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followee_id=u.id AND f.status='pending') AS request_pending,
+              EXISTS (SELECT 1 FROM follows f WHERE f.followee_id=$1 AND f.follower_id=u.id AND f.status='pending') AS has_incoming_request
+         FROM users u WHERE u.username=$2`,
+      [req.userId, String(req.params.username)]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    const u = r.rows[0];
+    res.json({
+      id: u.id, username: u.username, avatar_url: u.avatar_url || '', bio: u.bio || '',
+      is_private: u.is_private, created_at: u.created_at,
+      posts_count: u.posts_count, followers_count: u.followers_count, following_count: u.following_count,
+      is_following: !!u.is_following, request_pending: !!u.request_pending,
+      has_incoming_request: !!u.has_incoming_request
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/users/:id/follow', auth, async (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    if (targetId === req.userId) return res.status(400).json({ error: 'لا يمكنك متابعة نفسك' });
+
+    const t = await pool.query('SELECT id, is_private FROM users WHERE id=$1', [targetId]);
+    if (t.rowCount === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
+
+    const existing = await pool.query(
+      'SELECT status FROM follows WHERE follower_id=$1 AND followee_id=$2',
+      [req.userId, targetId]
+    );
+    if (existing.rowCount > 0) {
+      await pool.query('DELETE FROM follows WHERE follower_id=$1 AND followee_id=$2', [req.userId, targetId]);
+      return res.json({ following: false });
+    }
+
+    const status = t.rows[0].is_private ? 'pending' : 'accepted';
+    await pool.query(
+      'INSERT INTO follows (follower_id, followee_id, status) VALUES ($1,$2,$3)',
+      [req.userId, targetId, status]
+    );
+    if (status === 'accepted') await notify(targetId, req.userId, 'follow');
+    else await notify(targetId, req.userId, 'follow_request');
+    res.json({ following: true, pending: status === 'pending' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/follow-requests/:id/accept', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'UPDATE follows SET status=$1 WHERE followee_id=$2 AND follower_id=$3 AND status=$4 RETURNING id',
+      ['accepted', req.userId, Number(req.params.id), 'pending']
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'لا يوجد طلب' });
+    await notify(Number(req.params.id), req.userId, 'follow');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/follow-requests/:id/reject', auth, async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM follows WHERE followee_id=$1 AND follower_id=$2 AND status=$3',
+      [req.userId, Number(req.params.id), 'pending']
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+/* ============================================================
+   16) الإشعارات
+   ============================================================ */
+app.get('/api/notifications', auth, async (req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT n.id, n.type, n.post_id, n.read, n.created_at,
+              u.id AS actor_id, u.username AS actor_username, u.avatar_url AS actor_avatar
+         FROM notifications n JOIN users u ON u.id=n.actor_id
+        WHERE n.user_id=$1 ORDER BY n.id DESC LIMIT 50`,
+      [req.userId]
+    )).rows;
+    res.json(rows.map(n => ({
+      id: n.id, type: n.type, post_id: n.post_id, read: n.read, created_at: n.created_at,
+      actor_id: n.actor_id, actor_username: n.actor_username, actor_avatar: n.actor_avatar || ''
+    })));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.get('/api/notifications/unread', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM notifications WHERE user_id=$1 AND read=FALSE',
+      [req.userId]
+    );
+    res.json({ count: r.rows[0].count });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+app.post('/api/notifications/read', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE notifications SET read=TRUE WHERE user_id=$1 AND read=FALSE', [req.userId]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
 });
