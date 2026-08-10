@@ -104,6 +104,12 @@ h1{font-size:22px;margin-bottom:24px;background:linear-gradient(45deg,#ffe082,#f
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'حدث خطأ');
 
+      /* ===== إضافة كامورو: التوجه لصفحة إدخال كود التحقق ===== */
+      if (data.needs_verification) {
+        window.location.href = 'verify.html?email=' + encodeURIComponent(body.email.trim());
+        return;
+      }
+
       localStorage.setItem('camorro_token', data.token);
       window.location.href = 'home.html';
     } catch (err) {
@@ -124,4 +130,4 @@ h1{font-size:22px;margin-bottom:24px;background:linear-gradient(45deg,#ffe082,#f
 })();
 </script>
 </body>
-  </html>
+</html>
